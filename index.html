@@ -1,0 +1,1328 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#d1e4ca">
+<meta name="description" content="醒刻 — 体感时钟：把现在换算成身体觉得的几点，帮你感知清醒程度并逐步调回正常作息。">
+<!-- manifest 由 JS 按协议注入：file:// 直接打开时注册会触发 CORS 报错 -->
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>醒刻 · 体感时钟</title>
+<style>
+  :root{
+    --bg:#d1e4ca; --card:#fbf6e8; --line:#c6d5ba; --txt:#2a2a32; --mut:#6a6b62;
+    --butter:#f1d996; --g:#34b67a; --y:#e0a83c; --o:#e0813a; --r:#d94a52; --pur:#7a6ce0;
+    --top-bg:rgba(209,228,202,.92); --tabbar-bg:rgba(241,217,150,.96); --pur-soft:rgba(122,108,224,.07);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;}
+  body{padding-bottom:76px; max-width:520px; margin:0 auto;}
+  .hidden{display:none!important;}
+  .top{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:center;
+    padding:13px 16px 11px;background:var(--top-bg);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border-bottom:1px solid var(--line);}
+  .top .t{position:absolute;left:16px;font-size:14px;font-weight:600;letter-spacing:1px;color:var(--mut);}
+  .top .n{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;}
+  .top .n b{color:var(--txt);font-variant-numeric:tabular-nums;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;margin:12px;padding:14px;}
+  .btn{background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:10px;
+    padding:10px 14px;font-size:14px;cursor:pointer;}
+  .btn:active{transform:scale(.97);}
+  .btn.pri{background:var(--pur);border-color:var(--pur);color:#fff;font-weight:600;}
+  .btn.ghost{background:transparent;}
+  .btn.big{flex:1;padding:14px;font-size:15px;}
+  .banner{background:linear-gradient(90deg,rgba(139,124,246,.18),rgba(76,201,240,.14));
+    border:1px solid rgba(139,124,246,.4);border-radius:12px;margin:12px;padding:10px 12px;
+    display:flex;align-items:center;justify-content:space-between;font-size:14px;}
+  /* 表盘 */
+  .dialcard{text-align:center;}
+  .dialcard svg{display:block;margin:0 auto;max-width:300px;width:100%;height:auto;}
+  .reads{display:flex;justify-content:center;gap:18px;margin-top:6px;}
+  .reads div{display:flex;flex-direction:column;align-items:center;gap:1px;font-size:11px;color:var(--mut);}
+  .reads b{font-size:20px;font-weight:700;color:var(--txt);font-variant-numeric:tabular-nums;line-height:1.15;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:0 12px 4px;}
+  .chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;color:var(--mut);
+    display:inline-flex;align-items:center;justify-content:center;text-align:center;gap:4px;min-height:32px;}
+  .chip b{color:var(--txt);}
+  .chip#levelChip{font-size:17px;font-weight:600;padding:9px 20px;}
+  /* 建议 */
+  .advice .adv-title{font-size:13px;color:var(--mut);margin-bottom:6px;}
+  .targets{display:flex;gap:8px;margin:0 12px 4px;}
+  .tcard{flex:1;background:var(--butter);border:1px solid var(--line);border-radius:12px;padding:9px;text-align:center;font-size:12px;color:var(--mut);}
+  .tcard b{display:block;font-size:16px;color:var(--txt);font-variant-numeric:tabular-nums;margin-top:2px;}
+  .advice .adv-body{white-space:pre-line;font-size:14px;line-height:1.55;}
+  .adv-actions{display:flex;gap:8px;margin-top:10px;}
+  .adv-actions .btn{flex:1;padding:8px;font-size:12px;}
+  .adv-extra{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);white-space:pre-line;font-size:14px;line-height:1.55;}
+  .note{font-size:12px;color:#5a5b53;margin:4px 12px 0;text-align:center;line-height:1.5;}
+  .record-actions{display:flex;gap:10px;margin:14px 12px 4px;}
+  .onboarding{text-align:center;}
+  .onboarding h2{margin:6px 0;}
+  .onboarding .btn{margin-top:8px;}
+  /* 记录 */
+  .rform label{display:block;font-size:13px;color:var(--mut);margin:8px 0 4px;}
+  .rform input.dtin,.rform input[type="number"],.rform select{
+    width:100%;background:var(--bg);border:1px solid var(--line);color:var(--txt);
+    border-radius:8px;padding:10px;font-size:15px;}
+  .dtrow{display:flex;align-items:center;gap:10px;margin:10px 0;}
+  .dtl{width:56px;flex:none;font-size:13px;color:var(--mut);}
+  .dtbtn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:var(--bg);
+    border:2px solid var(--pur);border-radius:12px;color:var(--txt);padding:12px 8px;cursor:pointer;}
+  .dtbtn b{font-size:16px;}
+  .dtbtn small{font-size:11px;color:var(--pur);}
+  .dtsheet{position:fixed;inset:0;z-index:50;background:rgba(46,44,54,.55);display:flex;align-items:flex-end;justify-content:center;}
+  .dtsheet-card{width:100%;max-width:520px;background:var(--card);border-radius:20px 20px 0 0;padding:18px 20px 26px;border-top:1px solid var(--line);}
+  .dtsheet-card h3{margin:2px 0 12px;font-size:16px;text-align:center;}
+  .dts-line{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 0;}
+  .dts-btn{width:60px;height:46px;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--txt);font-size:18px;cursor:pointer;}
+  .dts-mid{flex:1;text-align:center;}
+  .dts-mid b{font-size:18px;}
+  .dts-mini{font-size:11px;color:var(--mut);margin-top:2px;}
+  .dts-time{font-size:24px;font-variant-numeric:tabular-nums;text-align:center;flex:1;background:var(--bg);
+    border:1px solid var(--line);border-radius:10px;color:var(--txt);padding:10px 4px;min-width:0;}
+  .dts-date{font-size:18px;font-variant-numeric:tabular-nums;text-align:center;flex:1;background:var(--bg);
+    border:1px solid var(--line);border-radius:10px;color:var(--txt);padding:10px 4px;min-width:0;}
+  .dtcal{margin:2px 0 4px;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:6px;}
+  .dtcal-head{display:flex;justify-content:space-between;align-items:center;padding:2px 4px 6px;}
+  .dtcal-head button{background:none;border:none;font-size:16px;color:var(--pur);cursor:pointer;padding:4px 10px;}
+  .dtcal-head b{font-size:14px;color:var(--txt);}
+  .dtcal-wk{color:var(--mut);font-size:11px;}
+  .dtcal-row{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;}
+  .dtcal-row span{padding:4px 0;}
+  .dtcal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
+  .dtcal-grid .blank{height:30px;}
+  .dtcal-d{height:30px;border:none;border-radius:6px;background:none;color:var(--txt);font-size:13px;cursor:pointer;}
+  .dtcal-d.today{background:var(--butter);font-weight:600;}
+  .dtcal-d.sel{background:var(--pur);color:#fff;font-weight:600;}
+  .dts-chips{display:flex;gap:8px;justify-content:center;margin:4px 0 2px;}
+  .dts-chips button{background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:999px;padding:7px 14px;font-size:13px;cursor:pointer;}
+  .wheelbox{position:relative;display:flex;justify-content:center;align-items:center;gap:8px;height:132px;margin:8px 0 4px;}
+  .wheelbox::before{content:'';position:absolute;left:50%;top:50%;width:206px;height:44px;transform:translate(-50%,-50%);
+    border-top:2px solid var(--pur);border-bottom:2px solid var(--pur);border-radius:10px;background:var(--pur-soft);pointer-events:none;}
+  .wheel{position:relative;width:86px;height:132px;overflow:hidden;touch-action:none;}
+  .wheel::before,.wheel::after{content:'';position:absolute;left:0;right:0;height:44px;z-index:2;pointer-events:none;}
+  .wheel::before{top:0;background:linear-gradient(to bottom,var(--card),transparent);}
+  .wheel::after{bottom:0;background:linear-gradient(to top,var(--card),transparent);}
+  .wh-list{position:absolute;left:0;right:0;top:0;will-change:transform;}
+  .wh-opt{height:44px;line-height:44px;text-align:center;font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--txt);}
+  .wheel-colon{font-size:28px;font-weight:700;color:var(--txt);}
+  .dts-btn.sm{width:auto;padding:0 16px;font-size:13px;}
+  .row{display:flex;gap:8px;margin-top:12px;}
+  .row .btn{flex:1;}
+  .rec{background:var(--card);border:1px solid var(--line);border-radius:12px;margin:8px 12px;padding:10px 12px;
+    display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;}
+  .rec .meta{color:var(--mut);font-size:13px;font-variant-numeric:tabular-nums;}
+  .rec .ops{display:flex;gap:6px;}
+  .rec .ops button{background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--mut);padding:5px 9px;font-size:12px;}
+  .empty{color:var(--mut);text-align:center;padding:24px 12px;font-size:14px;}
+  /* 趋势 */
+  .raster-row{display:flex;align-items:center;gap:8px;padding:2px 0;cursor:pointer;border-radius:6px;}
+  .raster-row:hover{background:rgba(0,0,0,.04);}
+  .raster-row.today .raster-day{color:var(--pur);font-weight:600;}
+  .raster-day{width:44px;flex:none;font-size:12px;color:#4a4a55;text-align:right;font-variant-numeric:tabular-nums;}
+  .raster-track{position:relative;height:18px;flex:1;background:repeating-linear-gradient(90deg,
+      #d8d4c4 0 1px, transparent 1px 6.25%);border:1px solid var(--line);border-radius:4px;overflow:hidden;}
+  .raster-seg{position:absolute;top:1px;bottom:1px;border-radius:3px;opacity:.9;}
+  .raster-seg .cont{position:absolute;left:0;top:50%;transform:translateY(-50%);font-size:9px;color:#fff;text-shadow:0 0 3px rgba(0,0,0,.55);line-height:1;}
+  .raster-tot{width:40px;flex:none;font-size:11px;color:#4a4a55;text-align:right;font-variant-numeric:tabular-nums;}
+  .bars{display:flex;align-items:flex-end;gap:4px;height:120px;padding:6px 0;border-bottom:1px dashed var(--line);position:relative;}
+  .bars .bl{background:var(--line);}
+  .bar{flex:1;min-width:6px;border-radius:3px 3px 0 0;position:relative;}
+  .bars .ref{position:absolute;left:0;right:0;border-top:2px dashed var(--pur);}
+  .bar label{position:absolute;top:-20px;left:50%;transform:translateX(-50%);font-size:11px;font-weight:600;color:#4a4a55;white-space:nowrap;font-variant-numeric:tabular-nums;}
+  .barAxis{display:flex;gap:4px;margin:3px 0 2px;}
+  .barAxis span{flex:1;min-width:6px;text-align:center;font-size:10px;color:#4a4a55;white-space:nowrap;overflow:hidden;}
+  .dist{height:18px;display:flex;border-radius:9px;overflow:hidden;}
+  .dist span{height:100%;}
+  .distDates{display:flex;justify-content:space-between;font-size:11px;color:#4a4a55;margin:2px 0 0;font-variant-numeric:tabular-nums;}
+  .legend{display:flex;gap:12px;justify-content:center;font-size:11px;color:var(--mut);margin-top:6px;flex-wrap:wrap;}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px;}
+  /* 设置 */
+  .set label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px;}
+  .set input,.set select{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--txt);
+    border-radius:8px;padding:10px;font-size:15px;}
+  .set label .dtbtn{width:100%;margin-top:4px;}
+  .set-hint{display:block;font-size:11px;color:var(--mut);margin:0 0 6px;line-height:1.5;}
+  .set .color-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mut);margin:10px 0 4px;}
+  .set .color-row .cl{width:64px;flex:none;color:var(--mut);}
+  .set .color-row .col-input{flex:none;width:120px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+  .set .color-row .swatch{width:30px;height:30px;flex:none;border-radius:6px;border:1px solid var(--line);}
+  .set .btn{margin-top:8px;width:100%;}
+  .set h3{font-size:14px;margin:4px 0;}
+  .more{display:block;width:calc(100% - 24px);margin:10px 12px;color:var(--pur);}
+  .raster-head{font-size:12px;color:#4a4a55;margin:2px 0 6px;line-height:1.5;}
+  .raster-axis{position:relative;height:15px;margin-left:52px;margin-right:48px;font-size:11px;color:#4a4a55;}
+  .raster-axis span{position:absolute;transform:translateX(-50%);}
+  .raster-axis span:first-child{transform:none;}
+  .raster-axis span:last-child{transform:translateX(-100%);}
+  /* 底栏 */
+  .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--tabbar-bg);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+    border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);}
+  .tabbar button{flex:1;background:none;border:none;color:var(--mut);padding:10px 0 12px;font-size:13px;cursor:pointer;}
+  .tabbar button.on{color:var(--pur);font-weight:600;}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="t">醒刻</div>
+  <div class="n">实际 <b id="nowTime">--:--</b></div>
+</header>
+
+<main id="mainWrap">
+  <div id="onboarding" class="card onboarding hidden">
+    <h2>先记一笔睡眠</h2>
+    <p style="color:var(--mut);font-size:13px;">你最近一次睡是从几点到几点？记下后表盘才会动。</p>
+    <button class="btn pri" onclick="openForm(null,null,null);gotoTab('records')">记第一笔</button>
+    <button class="btn ghost" onclick="gotoTab('settings')">先设置目标作息</button>
+  </div>
+
+  <div id="mainDash" class="hidden">
+    <div id="sleepingBanner" class="banner hidden">
+      <span>😴 正在睡眠中…</span>
+      <button class="btn" onclick="wakeNow()">醒来了</button>
+    </div>
+
+    <div class="card dialcard">
+      <svg id="clockSvg" viewBox="0 0 240 240">
+        <circle id="clockRing" cx="120" cy="120" r="108" fill="var(--card)" stroke="var(--line)" stroke-width="7"/>
+        <g id="ticks"></g>
+        <g id="hourLabels"></g>
+        <path id="clockFan" fill="none"/>
+        <path id="clockArc" fill="none" stroke-linecap="round"/>
+        <line id="handSec" x1="120" y1="120" x2="120" y2="46" stroke="#b9b1c9" stroke-width="1.5" stroke-linecap="round"/>
+        <line id="handFelt" x1="120" y1="120" x2="120" y2="28" stroke="#8b7cf6" stroke-width="5" stroke-linecap="round"/>
+        <line id="handActual" x1="120" y1="120" x2="120" y2="40" stroke="#2a2a32" stroke-width="2.5" stroke-linecap="round"/>
+        <circle id="clockDot" cx="120" cy="120" r="5" fill="#2a2a32"/>
+      </svg>
+      <div class="reads">
+        <div>体感 <b id="feltVal">--:--</b></div>
+        <div>实际 <b id="actVal">--:--</b></div>
+        <div>偏移 <b id="devVal">—</b></div>
+      </div>
+    </div>
+
+    <div class="chips">
+      <div class="chip">等效清醒 <b id="eVal">0.0h</b></div>
+      <div class="chip" id="levelChip">—</div>
+      <div class="chip">最近24h睡 <b id="sleep24Val">—</b></div>
+    </div>
+    <div class="targets">
+      <div class="tcard">目标就寝 <b id="tBed">—</b></div>
+      <div class="tcard">目标起床 <b id="tWake">—</b></div>
+    </div>
+
+    <div class="card advice">
+      <div class="adv-title" id="advTitle">实时建议</div>
+      <div class="adv-body" id="adviceBody"></div>
+      <div class="adv-actions">
+        <button class="btn" onclick="askSleepy()">我现在有点困</button>
+        <button class="btn" onclick="askReset()">我想今天调回正常</button>
+      </div>
+      <div class="adv-extra hidden" id="adviceExtra"></div>
+    </div>
+
+    <div class="record-actions">
+      <button class="btn big pri" onclick="sleepDown()">😴 睡下了</button>
+      <button class="btn big" onclick="wakeNow()">☀️ 醒来了</button>
+    </div>
+    <div class="note">建议为经验规则，非医疗诊断。数据只存本机。</div>
+  </div>
+</main>
+
+<section id="tab-records" class="tab hidden">
+  <form id="recordForm" class="card rform" onsubmit="return onRecordSubmit(event)">
+    <h3 id="rfTitle" style="margin:2px 0 0;">记一笔睡眠</h3>
+    <input type="hidden" id="rfId">
+    <input type="hidden" id="rfSleep">
+    <input type="hidden" id="rfWake">
+    <div class="dtrow">
+      <span class="dtl">入睡时间</span>
+      <button type="button" class="dtbtn" onclick="pickField('sleep')">
+        <b id="dtSleepVal">未设置</b><small>点这里选日期时间</small>
+      </button>
+    </div>
+    <div class="dtrow">
+      <span class="dtl">醒来时间</span>
+      <button type="button" class="dtbtn" onclick="pickField('wake')">
+        <b id="dtWakeVal">未设置</b><small>点这里选日期时间</small>
+      </button>
+    </div>
+    <div class="row">
+      <button type="submit" class="btn pri">保存</button>
+      <button type="button" class="btn ghost" onclick="clearForm()">取消</button>
+    </div>
+  </form>
+  <div id="recordList"></div>
+  <div class="empty" id="recordsEmpty">还没有记录。睡前点「睡下了」，醒来点「醒来了」，或手动记一笔。</div>
+</section>
+
+<div id="dtSheet" class="dtsheet hidden">
+  <div class="dtsheet-card">
+    <h3 id="dtSheetTitle">选择入睡时间</h3>
+    <div id="dtDateRow">
+      <div class="dts-line">
+        <input id="dtDateInput" type="text" inputmode="numeric" placeholder="如 8-7 或 2026-8-7" maxlength="10" class="dts-date" oninput="dtDateOnInput()">
+        <button type="button" class="dts-btn sm" onclick="dtCalToggle()">📅 日历</button>
+      </div>
+      <div id="dtCal" class="dtcal hidden"></div>
+      <div class="dts-chips">
+        <button type="button" onclick="dtQuickDate(0)">今天</button>
+        <button type="button" onclick="dtQuickDate(-1)">昨天</button>
+        <button type="button" onclick="dtQuickDate(-2)">前天</button>
+      </div>
+    </div>
+    <div class="wheelbox">
+      <div class="wheel" id="wheelH"><div class="wh-list" id="wheelOptsH"></div></div>
+      <div class="wheel-colon">:</div>
+      <div class="wheel" id="wheelM"><div class="wh-list" id="wheelOptsM"></div></div>
+    </div>
+    <div class="dts-line">
+      <input id="dtTimeInput" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="dts-time" oninput="dtOnInput()">
+      <button type="button" class="dts-btn sm" onclick="dtNow()">此刻</button>
+    </div>
+    <div class="dts-chips">
+      <button type="button" onclick="dtShift(-900000)">−15分</button>
+      <button type="button" onclick="dtShift(900000)">+15分</button>
+      <button type="button" onclick="dtShift(3600000)">+1时</button>
+    </div>
+    <div class="row">
+      <button type="button" class="btn pri" onclick="dtDone()">确定</button>
+      <button type="button" class="btn ghost" onclick="closeSheet()">取消</button>
+    </div>
+  </div>
+</div>
+
+<section id="tab-trends" class="tab hidden">
+  <div class="card">
+    <h3 style="margin:2px 0 8px;">睡眠节律图</h3>
+    <div id="raster"></div>
+    <div class="note">每个色块是一段睡眠，颜色=那次醒来的等效清醒等级；跨半夜的睡眠拆成两行并在后段标 ↷；右侧是当天落在该日的睡眠时长（跨夜各算各的）。点某行可补记那天。</div>
+  </div>
+  <div class="card">
+    <h3 style="margin:2px 0 8px;">每次醒来时的等效清醒 E</h3>
+    <div class="bars" id="wakeBars">
+      <div class="ref" style="bottom:66.666%"></div>
+    </div>
+    <div class="barAxis" id="barAxis"></div>
+    <div class="note">每根柱=一次醒来（同一天睡多次就有多根），柱顶=那次醒来时的等效清醒 E(h)，与柱高对应；柱下日期，同日多次标②③④。越低恢复越好。紫色虚线=16h（正常清醒日上限）。最近N次（N在设置里可改）。</div>
+  </div>
+  <div class="card">
+    <h3 style="margin:2px 0 8px;">单次睡眠时长</h3>
+    <div class="bars" id="sleepDurBars">
+      <div class="ref" style="bottom:50%"></div>
+    </div>
+    <div class="barAxis" id="sleepDurAxis"></div>
+    <div class="note">每根柱=一次睡眠（入睡→醒来）的时长，同一天睡多次就有多根；柱顶=小时数，柱下日期，同日多次标②③④。紫色虚线=理想睡眠时长，够不够一目了然。最近N次（N在设置里可改）。</div>
+  </div>
+  <div class="card">
+    <h3 style="margin:2px 0 8px;">等级分布（最近记录）</h3>
+    <div class="dist" id="levelDist"></div>
+    <div class="distDates"><span id="distD1"></span><span id="distD2"></span></div>
+    <div class="note">按次数算：最近N次醒来（N在设置里可改），每次归入一个等级，色块宽度=该等级次数占比（一天睡多次会占多次）。两端日期=这N次的首尾。</div>
+    <div class="legend">
+      <span><i style="background:var(--g)"></i>正常</span>
+      <span><i style="background:var(--y)"></i>疲劳</span>
+      <span><i style="background:var(--o)"></i>很累</span>
+      <span><i style="background:var(--r)"></i>极限</span>
+    </div>
+  </div>
+  <div class="card">
+    <h3 style="margin:2px 0 8px;">最近24h睡眠量走势</h3>
+    <svg id="sleepLine" viewBox="0 0 320 124" width="100%"></svg>
+    <div class="note">横轴=最近N次醒来的次序（N在设置里可改，等距排列、不是按时间长短），纵轴=那次醒来时点的最近24h睡眠量(h)，点上标数字；紫虚线=你的理想睡眠时长；每点一根竖虚线；底部小刻度=相邻两次醒来跨过午夜（进入新的一天），刻度下标的日期=那天的日期。一天睡多次时每个醒来点各算一次。</div>
+  </div>
+  <div id="trendEmpty" class="empty hidden">先记录几次睡眠，趋势图才会出现。</div>
+</section>
+
+<section id="tab-settings" class="tab hidden">
+  <div class="card set">
+    <h3>目标作息（只用于建议，不影响算法）</h3>
+    <label>目标就寝
+      <button type="button" class="dtbtn" onclick="pickClockTime('setBed')"><b id="setBedVal">01:00</b><small>点这里选时间</small></button>
+    </label>
+    <label>目标起床
+      <button type="button" class="dtbtn" onclick="pickClockTime('setWake')"><b id="setWakeVal">08:00</b><small>点这里选时间</small></button>
+    </label>
+    <label>理想睡眠时长（小时） <input type="number" id="setIdeal" min="4" max="12" step="0.5" value="7"></label>
+    <label>体感针颜色
+      <select id="setHand">
+        <option>紫</option><option>青</option><option>蓝</option><option>白</option><option>玫红</option><option>黑</option>
+      </select>
+    </label>
+    <h3 style="margin-top:14px;">装修 · 配色（自己调）</h3>
+    <small class="set-hint">填 6 位色号（如 #d1e4ca），输入时即时预览，旁边方块就是效果。背景=页面底色，卡片=白色块，线条=描边，按钮点缀=底栏/小卡片，高亮=紫色按钮和选中框。改完刷新浏览器立即生效。</small>
+    <label class="color-row"><span class="cl">背景色</span><input id="setColBg" type="text" maxlength="7" class="col-input"><span class="swatch" id="swBg"></span></label>
+    <label class="color-row"><span class="cl">卡片色</span><input id="setColCard" type="text" maxlength="7" class="col-input"><span class="swatch" id="swCard"></span></label>
+    <label class="color-row"><span class="cl">线条色</span><input id="setColLine" type="text" maxlength="7" class="col-input"><span class="swatch" id="swLine"></span></label>
+    <label class="color-row"><span class="cl">按钮点缀</span><input id="setColButter" type="text" maxlength="7" class="col-input"><span class="swatch" id="swButter"></span></label>
+    <label class="color-row"><span class="cl">高亮色</span><input id="setColPur" type="text" maxlength="7" class="col-input"><span class="swatch" id="swPur"></span></label>
+    <button type="button" class="btn ghost" onclick="resetColors()">恢复默认配色</button>
+    <h3 style="margin-top:14px;">等级阈值（小时）</h3>
+    <small class="set-hint">含义：等效清醒达到该小时数就归入此等级。建议保持 疲劳 &lt; 很累 &lt; 极限。</small>
+    <label>疲劳 ≥ <input type="number" id="setY" min="6" max="24" value="16"></label>
+    <label>很累 ≥ <input type="number" id="setO" min="6" max="24" value="20"></label>
+    <label>极限 ≥ <input type="number" id="setR" min="6" max="24" value="24"></label>
+    <h3 style="margin-top:14px;">统计</h3>
+    <label>趋势图取最近N次醒来 <input type="number" id="setStatN" min="5" max="40" step="1" value="14"></label>
+    <small class="set-hint">等级分布 / 等效柱状图 / 走势图共用。14≈两周样本：次数太多会稀释近期趋势，太少会抖。</small>
+    <h3 style="margin-top:14px;">数据</h3>
+    <button class="btn" onclick="exportData()">导出备份（JSON）</button>
+    <label>导入备份
+      <input type="file" accept=".json,application/json" onchange="importData(this)">
+    </label>
+    <button class="btn ghost" onclick="clearData()">清空全部数据</button>
+    <div class="note" style="margin-top:10px;">所有数据只保存在这台设备上。改设置不会改动任何历史记录，也不会影响 E 的算法。</div>
+  </div>
+</section>
+
+<nav class="tabbar">
+  <button data-tab="main" class="on">主屏</button>
+  <button data-tab="records">记录</button>
+  <button data-tab="trends">趋势</button>
+  <button data-tab="settings">设置</button>
+</nav>
+
+<script>
+// ================= 工具 =================
+function $(id){ return document.getElementById(id); }
+function pad2(n){ return (n<10?'0':'')+n; }
+function toMs(str){
+  var ms = new Date(str).getTime();
+  if(!isNaN(ms)) return ms;
+  // 兜底：手动解析 "YYYY-MM-DDTHH:MM"（兼容旧引擎/浏览器）
+  var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(str));
+  if(m) return new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], 0, 0).getTime();
+  return NaN;
+}
+function isoLocal(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())+'T'+pad2(d.getHours())+':'+pad2(d.getMinutes()); }
+function toLocalInput(ms){ return isoLocal(new Date(ms)); }
+
+// 时间解析（兼容 ISO 与宽容短格式；录入走弹层，此函数兜底旧数据/导入）
+function parseInput(str){
+  str=String(str||'').replace(/^\s+|\s+$/g,''); if(!str)return NaN;
+  var now=new Date();
+  var m=/^(\d{4})-(\d{1,2})-(\d{1,2})[T ](\d{1,2}):(\d{2})/.exec(str);
+  if(m)return new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5]).getTime();
+  var m2=/^(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})/.exec(str);
+  if(m2)return new Date(now.getFullYear(),+m2[1]-1,+m2[2],+m2[3],+m2[4]).getTime();
+  var m3=/^(\d{1,2}):(\d{2})$/.exec(str);
+  if(m3)return new Date(now.getFullYear(),now.getMonth(),now.getDate(),+m3[1],+m3[2]).getTime();
+  return NaN;
+}
+
+// 时间选择弹层：日期步进 + 手机闹钟式双滚轮(时/分，任意分钟) + 可打字 HH:MM。手机优先，不依赖原生选择器
+var WEEK_CN=['周日','周一','周二','周三','周四','周五','周六'];
+var dtTarget=null, dtTargetField=null, dtMode='dt', dtMs=0;
+var WH_ROW=44, WH_HALF=66;
+function fmtDateCN(ms){
+  var d=new Date(ms),n=new Date();
+  return (d.getFullYear()!==n.getFullYear()?(d.getFullYear()+'年'):'')+(d.getMonth()+1)+'月'+d.getDate()+'日';
+}
+function fmtHM(iso){ var d=new Date(toMs(iso)); return pad2(d.getHours())+':'+pad2(d.getMinutes()); }
+function updateFieldLabels(){
+  $('dtSleepVal').textContent=$('rfSleep').value?fmtDateCN(toMs($('rfSleep').value))+' '+fmtHM($('rfSleep').value):'未设置';
+  $('dtWakeVal').textContent=$('rfWake').value?fmtDateCN(toMs($('rfWake').value))+' '+fmtHM($('rfWake').value):'未设置';
+}
+// 宽容解析 HH:MM（冒号可省；只有小时则分钟为 0），非法返回 null
+function dtParseText(v){
+  var m=/^\s*(\d{1,2})\s*[:：]?\s*(\d{0,2})\s*$/.exec(String(v||''));
+  if(!m)return null;
+  var h=+m[1], min=m[2]===''?0:+m[2];
+  if(h>23||min>59)return null;
+  return{h:h,m:min};
+}
+function wheelVal(col){ var d=new Date(dtMs); return col==='h'?d.getHours():d.getMinutes(); }
+function wheelTransform(idx){ return (WH_HALF-WH_ROW/2)-idx*WH_ROW; }
+function snapWheels(){
+  var d=new Date(dtMs);
+  $('wheelOptsH').style.transform='translateY('+wheelTransform(d.getHours())+'px)';
+  $('wheelOptsM').style.transform='translateY('+wheelTransform(d.getMinutes())+'px)';
+}
+function setWheelVal(col,v){
+  var d=new Date(dtMs);
+  if(col==='h')d.setHours(v,d.getMinutes()); else d.setMinutes(v);
+  dtMs=d.getTime(); syncSheet();
+}
+function dtOnInput(){
+  var p=dtParseText($('dtTimeInput').value);
+  if(p){ var d=new Date(dtMs); d.setHours(p.h,p.m,0,0); dtMs=d.getTime(); syncSheet(); }
+}
+function setupWheel(col,count){
+  var wheel=document.getElementById('wheel'+(col==='h'?'H':'M'));
+  var list=document.getElementById('wheelOpts'+(col==='h'?'H':'M'));
+  var i,d;
+  for(i=0;i<count;i++){
+    d=document.createElement('div'); d.className='wh-opt'; d.textContent=pad2(i);
+    d.setAttribute('data-i',i);
+    list.appendChild(d);
+  }
+  var dragging=false, moved=false, startY=0, startIdx=0;
+  wheel.addEventListener('pointerdown',function(e){
+    dragging=true; moved=false; startY=e.clientY; startIdx=wheelVal(col);
+    if(wheel.setPointerCapture)wheel.setPointerCapture(e.pointerId);
+  });
+  wheel.addEventListener('pointermove',function(e){
+    if(!dragging)return;
+    var dy=e.clientY-startY;
+    if(dy>4||dy<-4)moved=true;
+    var idx=startIdx-Math.round(dy/WH_ROW);
+    idx=Math.max(0,Math.min(count-1,idx));
+    setWheelVal(col,idx);
+  });
+  wheel.addEventListener('pointerup',function(e){
+    dragging=false;
+    if(!moved){
+      var t=e.target, i=t&&t.getAttribute?+t.getAttribute('data-i'):NaN;
+      if(!isNaN(i)&&i>=0)setWheelVal(col,i);
+    }
+  });
+  wheel.addEventListener('pointercancel',function(){ dragging=false; });
+  wheel.addEventListener('wheel',function(e){
+    if(e.preventDefault)e.preventDefault();
+    var v=wheelVal(col)+((e.deltaY>0)?1:-1);
+    v=Math.max(0,Math.min(count-1,v));
+    setWheelVal(col,v);
+  });
+}
+function openSheet(){
+  $('dtDateRow').style.display=(dtMode==='t')?'none':'';
+  syncSheet();
+  $('dtSheet').classList.remove('hidden');
+}
+function syncSheet(){
+  var d=new Date(dtMs);
+  $('dtDateInput').value=(d.getFullYear()!==new Date().getFullYear()?(d.getFullYear()+'/'):'')+(d.getMonth()+1)+'/'+d.getDate();
+  $('dtTimeInput').value=pad2(d.getHours())+':'+pad2(d.getMinutes());
+  snapWheels();
+}
+function pickField(k){
+  dtMode='dt'; dtTarget=k; dtTargetField=null;
+  var iso=$(k==='sleep'?'rfSleep':'rfWake').value;
+  var ms=iso?toMs(iso):NaN;
+  dtMs=isNaN(ms)?((k==='sleep')?Date.now()-7*3600000:Date.now()):ms;
+  $('dtSheetTitle').textContent=k==='sleep'?'选择入睡时间':'选择醒来时间';
+  openSheet();
+}
+function pickClockTime(field){
+  dtMode='t'; dtTarget=null; dtTargetField=field;
+  var p=dtParseText($(field+'Val').textContent), now=new Date();
+  dtMs=now.getTime();
+  if(p)dtMs=new Date(now.getFullYear(),now.getMonth(),now.getDate(),p.h,p.m,0,0).getTime();
+  $('dtSheetTitle').textContent=field==='setBed'?'目标就寝时间':'目标起床时间';
+  openSheet();
+}
+function dtShift(d){ dtMs+=d; syncSheet(); }
+function dtQuickDate(off){
+  var t=new Date(dtMs),cur=new Date();
+  dtMs=new Date(cur.getFullYear(),cur.getMonth(),cur.getDate()+off,t.getHours(),t.getMinutes(),0,0).getTime();
+  syncSheet();
+}
+function dtNow(){ dtMs=Date.now(); syncSheet(); }
+// 日期：可打字（M/D 或 YYYY/M/D）也可弹日历
+function dtParseDate(v){
+  v=String(v||'').replace(/^\s+|\s+$/g,'');
+  var m=/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/.exec(v);
+  if(m)return validDate(+m[1],+m[2]-1,+m[3]);
+  var m2=/^(\d{1,2})[-/](\d{1,2})$/.exec(v);
+  if(m2)return validDate(new Date().getFullYear(),+m2[1]-1,+m2[2]);
+  return NaN;
+}
+function validDate(yy,mm,dd){
+  var t=new Date(yy,mm,dd,0,0,0,0);
+  if(t.getFullYear()!==yy||t.getMonth()!==mm||t.getDate()!==dd)return NaN;
+  return t.getTime();
+}
+function dtDateOnInput(){
+  var ms=dtParseDate($('dtDateInput').value);
+  if(!isNaN(ms)){
+    var d=new Date(dtMs), nd=new Date(ms);
+    nd.setHours(d.getHours(),d.getMinutes(),0,0);
+    dtMs=nd.getTime();
+    syncSheet();
+  }
+}
+var dtCalMonth=0; // 月序号 year*12+month
+function dtCalRender(){
+  var box=$('dtCal'); box.innerHTML='';
+  var yy=Math.floor(dtCalMonth/12), mm=dtCalMonth%12;
+  var d=new Date(yy,mm,1,0,0,0,0), today=startOfDay(Date.now()), cur=new Date(dtMs);
+  var head=document.createElement('div'); head.className='dtcal-head';
+  var b1=document.createElement('button'); b1.type='button'; b1.textContent='◀';
+  b1.onclick=function(){ dtCalMonth--; dtCalRender(); };
+  var t=document.createElement('b'); t.textContent=yy+'年'+(mm+1)+'月';
+  var b2=document.createElement('button'); b2.type='button'; b2.textContent='▶';
+  b2.onclick=function(){ dtCalMonth++; dtCalRender(); };
+  head.appendChild(b1); head.appendChild(t); head.appendChild(b2); box.appendChild(head);
+  var wk=document.createElement('div'); wk.className='dtcal-row dtcal-wk';
+  for(var w=0;w<7;w++){ var ws=document.createElement('span'); ws.textContent=['日','一','二','三','四','五','六'][w]; wk.appendChild(ws); }
+  box.appendChild(wk);
+  var grid=document.createElement('div'); grid.className='dtcal-grid';
+  var firstDow=d.getDay(), days=new Date(yy,mm+1,0).getDate(), pad, cell;
+  for(pad=0;pad<firstDow;pad++){ cell=document.createElement('span'); cell.className='blank'; grid.appendChild(cell); }
+  for(var dd=1;dd<=days;dd++){
+    (function(dayNum){
+      var c=document.createElement('button'); c.type='button'; c.textContent=dayNum;
+      var ms=new Date(yy,mm,dayNum,0,0,0,0).getTime();
+      c.className='dtcal-d'+(ms===today?' today':'')+(yy===cur.getFullYear()&&mm===cur.getMonth()&&dayNum===cur.getDate()?' sel':'');
+      c.onclick=function(){
+        var h=new Date(dtMs);
+        dtMs=new Date(yy,mm,dayNum,h.getHours(),h.getMinutes(),0,0).getTime();
+        syncSheet(); $('dtCal').classList.add('hidden');
+      };
+      grid.appendChild(c);
+    })(dd);
+  }
+  box.appendChild(grid);
+}
+function dtCalToggle(){
+  var cal=$('dtCal');
+  if(cal.classList.contains('hidden')){
+    dtCalMonth=new Date(dtMs).getFullYear()*12+new Date(dtMs).getMonth();
+    dtCalRender();
+    cal.classList.remove('hidden');
+  }else{ cal.classList.add('hidden'); }
+}
+function dtDone(){
+  if(dtMode==='t'){
+    var p=dtParseText($('dtTimeInput').value);
+    if(p){
+      var v=pad2(p.h)+':'+pad2(p.m);
+      $(dtTargetField+'Val').textContent=v;
+      var s=getSettings();
+      if(dtTargetField==='setBed')s.targetBed=v; else s.targetWake=v;
+      saveSettings(s); refreshMain();
+    }
+    closeSheet(); return;
+  }
+  $(dtTarget==='sleep'?'rfSleep':'rfWake').value=isoLocal(new Date(dtMs));
+  var s=toMs($('rfSleep').value),w=toMs($('rfWake').value);
+  if(!isNaN(s)&&!isNaN(w)&&w<=s){ $('rfWake').value=isoLocal(new Date(s+7*3600000)); }
+  updateFieldLabels(); closeSheet();
+}
+function closeSheet(){ $('dtSheet').classList.add('hidden'); }
+
+// ===CORE-START===
+function pad2(n){ return (n<10?'0':'')+n; }
+function timeOfDay(ts){ var d=new Date(ts); return d.getHours()+d.getMinutes()/60+d.getSeconds()/3600; }
+function fmtHour(h){ h=((h%24)+24)%24; var mm=Math.round((h%1)*60); var hh=Math.floor(h); if(mm===60){mm=0;hh=(hh+1)%24;} return pad2(hh)+':'+pad2(mm); }
+function parseH(str){ var p=String(str).split(':'); return (+p[0])+(+p[1]||0)/60; }
+function fmtDur(h){ if(h==null||isNaN(h))return '—'; var m=Math.round(h*60); if(m<=0)return '0'; if(m<60)return m+'分钟'; var H=Math.floor(m/60), M=m%60; return H+'h'+(M?' '+M+'m':''); }
+function normDev(felt, actual){ var d=(((felt-actual)%24)+24)%24; if(d>12)d-=24; return d; }
+function levelOf(E,L){ if(E>=L.r)return{name:'极限',color:'#d94a52'}; if(E>=L.o)return{name:'很累',color:'#e0813a'}; if(E>=L.y)return{name:'疲劳',color:'#e0a83c'}; return{name:'正常',color:'#34b67a'}; }
+// 合并重叠睡眠块（按开始时间排序）
+function mergeBlocks(blocks){
+  var arr=blocks.slice().sort(function(a,b){return a.s-b.s;});
+  var out=[],i,last;
+  for(i=0;i<arr.length;i++){
+    last=out[out.length-1];
+    if(!last||arr[i].s>last.e)out.push({s:arr[i].s,e:arr[i].e});
+    else if(arr[i].e>last.e)last.e=arr[i].e;
+  }
+  return out;
+}
+// 计算时刻 t 的有效清醒 E 与校准点（E 最近一次被睡回 0 的醒来时刻）
+// blocks: [{s:ms,e:ms}] 已按 s 排序
+function computeEAt(sortedBlocks,t){
+  if(!sortedBlocks.length)return{E:0,anchor:null};
+  var E=0,anchor=null,cur=sortedBlocks[0].s,i,iv,dt;
+  for(i=0;i<sortedBlocks.length;i++){
+    iv=sortedBlocks[i];
+    if(cur<iv.s){
+      dt=Math.min(iv.s,t)-cur;
+      if(dt>0){ E=Math.min(24,E+dt/3600000); cur=iv.s; }
+    }
+    if(cur<iv.e&&cur<t){
+      dt=Math.min(iv.e,t)-cur;
+      E=E-2*(dt/3600000);
+      if(E<=0){ anchor=iv.e; E=0; }
+      cur=Math.min(iv.e,t);
+    }
+  }
+  if(cur<t){ E=Math.min(24,E+(t-cur)/3600000); }
+  return{E:E,anchor:anchor};
+}
+// 最近24h内"完整结束"的睡眠块时长之和（不截断任何一块）
+function rollingSleep24(blocks,now){
+  var since=now-24*3600000,sum=0,i;
+  for(i=0;i<blocks.length;i++){ if(blocks[i].e>=since) sum+=(blocks[i].e-blocks[i].s)/3600000; }
+  return sum;
+}
+// ===CORE-END===
+
+var KEY_RECORDS='wake-clock-records', KEY_SETTINGS='wake-clock-settings', KEY_PENDING='wake-clock-pending';
+var HAND_COLORS={紫:'#7a6ce0',青:'#3aa8c9',蓝:'#5b7fd6',白:'#7a7682',玫红:'#d4639f',黑:'#3a3a44'};
+var DEFAULT_SETTINGS={targetBed:'01:00',targetWake:'08:00',idealSleepH:7,handColor:'紫',levels:{y:16,o:20,r:24},statN:14,
+  colors:{bg:'#d1e4ca',card:'#fbf6e8',line:'#c6d5ba',butter:'#f1d996',pur:'#7a6ce0'}};
+
+function loadRecords(){
+  try{ var s=localStorage.getItem(KEY_RECORDS); if(s){ var a=JSON.parse(s); if(Object.prototype.toString.call(a)==='[object Array]')return a; } }catch(e){}
+  return [];
+}
+function saveRecords(arr){ try{ localStorage.setItem(KEY_RECORDS,JSON.stringify(arr)); }catch(e){} }
+function loadPending(){
+  try{ var s=localStorage.getItem(KEY_PENDING); if(s){ var o=JSON.parse(s); return{sleepStart:toMs(o.sleepStart)}; } }catch(e){}
+  return null;
+}
+function savePending(o){ try{ if(o)localStorage.setItem(KEY_PENDING,JSON.stringify({sleepStart:new Date(o.sleepStart).getTime()})); else localStorage.removeItem(KEY_PENDING); }catch(e){} }
+function getSettings(){
+  var s=DEFAULT_SETTINGS;
+  try{ var raw=localStorage.getItem(KEY_SETTINGS); if(raw){ var o=JSON.parse(raw); if(o&&typeof o==='object'){ s={}; for(var k in DEFAULT_SETTINGS)s[k]=DEFAULT_SETTINGS[k]; for(k in o)if(k in s)s[k]=o[k]; } } }catch(e){}
+  return s;
+}
+function saveSettings(o){ try{ localStorage.setItem(KEY_SETTINGS,JSON.stringify(o)); }catch(e){} }
+// 配色自定义：把 settings.colors 应用到 CSS 变量（背景/卡片/线条/点缀/高亮，含半透明派生值）
+function hexToRgba(hex,a){
+  var m=/^#?([0-9a-f]{6})$/i.exec(String(hex||'').trim());
+  if(!m)return null;
+  var n=parseInt(m[1],16);
+  return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';
+}
+function applyColors(){
+  var c=getSettings().colors||DEFAULT_SETTINGS.colors;
+  var de=document.documentElement;
+  if(de){
+    var st=de.style;
+    st.setProperty('--bg',c.bg); st.setProperty('--card',c.card); st.setProperty('--line',c.line);
+    st.setProperty('--butter',c.butter); st.setProperty('--pur',c.pur);
+    st.setProperty('--top-bg',hexToRgba(c.bg,.92)||c.bg);
+    st.setProperty('--tabbar-bg',hexToRgba(c.butter,.96)||c.butter);
+    st.setProperty('--pur-soft',hexToRgba(c.pur,.07)||c.pur);
+  }
+  if(typeof document.querySelector==='function'){
+    var meta=document.querySelector('meta[name="theme-color"]');
+    if(meta)meta.setAttribute('content',c.bg);
+  }
+}
+// 配色「边打边预览」：直接把某个 key 的色应用到 CSS 变量（不经过 settings）
+function applyOneColor(key,hex){
+  var de=document.documentElement;
+  if(!de)return;
+  var st=de.style, cssKey={bg:'--bg',card:'--card',line:'--line',butter:'--butter',pur:'--pur'}[key];
+  if(!cssKey)return;
+  st.setProperty(cssKey,hex);
+  if(key==='bg')st.setProperty('--top-bg',hexToRgba(hex,.92)||hex);
+  if(key==='butter')st.setProperty('--tabbar-bg',hexToRgba(hex,.96)||hex);
+  if(key==='pur')st.setProperty('--pur-soft',hexToRgba(hex,.07)||hex);
+  if(key==='bg'&&typeof document.querySelector==='function'){
+    var meta=document.querySelector('meta[name="theme-color"]');
+    if(meta)meta.setAttribute('content',hex);
+  }
+}
+
+// ================= 状态 =================
+function stateAt(now){
+  var recs=loadRecords(), blocks=[], i, pend=loadPending(), sleeping=false;
+  for(i=0;i<recs.length;i++){ blocks.push({s:toMs(recs[i].sleepStart),e:toMs(recs[i].wakeEnd)}); }
+  if(pend&&now>pend.sleepStart){ blocks.push({s:pend.sleepStart,e:now}); sleeping=true; }
+  blocks=mergeBlocks(blocks);
+  var r=computeEAt(blocks,now);
+  var actual=timeOfDay(now), felt=null, dev=null;
+  if(r.anchor!=null){ felt=(((timeOfDay(r.anchor)+r.E)%24)+24)%24; dev=normDev(felt,actual); }
+  return{E:r.E,anchor:r.anchor,felt:felt,dev:dev,actual:actual,sleep24:rollingSleep24(blocks,now),sleeping:sleeping,records:recs,pending:pend};
+}
+function lastWakeH(st){
+  var recs=st.records,last=null,i,w;
+  for(i=0;i<recs.length;i++){ w=toMs(recs[i].wakeEnd); if(last==null||w>last)last=w; }
+  return last==null?null:timeOfDay(last);
+}
+
+// ================= 建议 =================
+function hoursUntilWake(nowH,wakeH){ var d=nowH<wakeH?wakeH-nowH:24-nowH+wakeH; return d>16?16:d; }
+function remToBed(nowH,bed){ var d=bed-nowH; return d<0?d+24:d; }
+function supRule(st,s){
+  var bed=parseH(s.targetBed),wake=parseH(s.targetWake),nowH=st.actual,E=st.E;
+  if(E>=20)return '极限状态：现在就睡。';
+  if(nowH>=bed-1&&nowH<=bed+1&&E>=12)return '到目标就寝时间了，去睡，明早 '+s.targetWake+' 起。';
+  var lw=lastWakeH(st);
+  if(lw!=null&&lw>=14&&nowH<bed)return '今天醒太晚了，别睡长觉，撑到就寝时间，明早 '+s.targetWake+' 闹钟起。';
+  if(st.sleep24<s.idealSleepH-1)return '最近24h只睡了 '+fmtDur(st.sleep24)+'，今晚尽量 '+s.targetBed+' 前躺下。';
+  if(nowH>=16&&nowH<24&&E<12)return '傍晚还想睡只睡 ≤90min 短觉，别睡长。';
+  return null;
+}
+function generateAdvice(st){
+  var s=getSettings(),bed=parseH(s.targetBed),wake=parseH(s.targetWake),nowH=st.actual,E=st.E,lines=[];
+  if(st.sleeping)return{title:'睡眠中',body:'你正在睡。睡到自然醒或 '+s.targetWake+' 起，E 会继续回落。'};
+  if(st.felt!=null&&st.dev!=null){
+    var dir=st.dev>=0?'快':'慢';
+    lines.push('你的身体时间走得比实际'+dir+' '+Math.abs(st.dev).toFixed(1)+'h，即走在实际时间的'+(st.dev>=0?'前面':'后面')+'（身体觉得现在≈'+fmtHour(st.felt)+'）。');
+  }
+  var dur=hoursUntilWake(nowH,wake);
+  if(E>=20){
+    lines.push('已到极限，现在就去睡，别撑到天亮。'+(dur>=4?'闹钟设 '+s.targetWake+'，睡约 '+fmtDur(dur)+'。':'能睡多久睡多久。'));
+  }else if(nowH>=21&&dur>=4&&2*dur>=E){
+    lines.push('现在去睡，闹钟 '+s.targetWake+'，睡约 '+fmtDur(dur)+'——这次 E 会回 0，表盘校准到 '+s.targetWake+'，一次归位。');
+  }else if(nowH>=21&&dur>=4){
+    lines.push('现在去睡，闹钟 '+s.targetWake+'，睡约 '+fmtDur(dur)+'——虽不能一次归位，也能大幅回血。');
+  }else{
+    var bp=nowH<bed?'今晚 '+fmtHour(bed):'明晚 '+fmtHour(bed);
+    lines.push('分步拉回：'+bp+' 睡、明早 '+s.targetWake+' 闹钟起（没睡够也叫醒）、白天只睡 ≤90min 短觉；每天约提前 1–2h。');
+  }
+  var sup=supRule(st,s);
+  lines.push('· '+(sup||('当前等效清醒 '+E.toFixed(1)+'h，距目标就寝还有 '+fmtDur(remToBed(nowH,bed))+'。')));
+  return{title:'实时建议',body:lines.join('\n')};
+}
+function askSleepy(){
+  var st=stateAt(Date.now()),s=getSettings(),bed=parseH(s.targetBed),nowH=st.actual,E=st.E,msg;
+  if(st.sleeping){ msg='你正在睡，睡醒再点这个按钮。'; }
+  else if(E>=20){ msg='你不是有点困，是严重欠觉——直接长睡到 '+s.targetWake+'，别只补短觉。'; }
+  else if(nowH>=bed){ msg='已经过了目标就寝时间，现在就去睡吧。'; }
+  else if(nowH>=bed-3){ msg='快到目标就寝时间，别睡，撑到 '+s.targetBed+' 直接睡。'; }
+  else if(nowH>=16){ msg='可短睡 ≤90min，睡到 '+fmtHour(nowH+1.5)+' 起；今晚 '+s.targetBed+' 照常睡。'; }
+  else { msg='可补觉 20–45min，睡到 '+fmtHour(nowH+0.75)+' 起；醒来后晒晒太阳，撑到 '+s.targetBed+'。'; }
+  showExtra(msg);
+}
+function askReset(){
+  var st=stateAt(Date.now()),s=getSettings(),bed=parseH(s.targetBed),wake=parseH(s.targetWake),nowH=st.actual,E=st.E,msg;
+  if(st.sleeping){ msg='你正在睡。若想今天调回，闹钟设 '+s.targetWake+' 起，白天别再睡长觉。'; }
+  else if(E>=20){ msg='先睡，明天再调。现在去睡，别撑。'; }
+  else{
+    var dur=hoursUntilWake(nowH,wake);
+    if(dur>=4){
+      if(nowH>=bed){ msg='现在就去睡，闹钟 '+s.targetWake+'，睡约 '+fmtDur(dur)+'——明早 '+s.targetWake+' 起，今天白天别睡长觉，困了只短睡 ≤30min，今晚就回到正常节奏。'; }
+      else{ msg='今天能调回：现在起别睡长觉（困了在 14:00–16:00 只短睡 ≤30min），撑到 '+s.targetBed+' 睡，明早 '+s.targetWake+' 闹钟起——E 会回 0，校准点落到 '+s.targetWake+'。'; }
+    }else{ msg='今天调不回。今晚 '+s.targetBed+' 睡，明早 '+s.targetWake+' 起（没睡够也闹钟叫醒）；明天再执行方案，每天约提前 1–2h。'; }
+  }
+  showExtra(msg);
+}
+function showExtra(msg){ var el=$('adviceExtra'); el.textContent=msg; el.classList.remove('hidden'); }
+function clearExtra(){ var el=$('adviceExtra'); el.classList.add('hidden'); el.textContent=''; }
+
+// ================= 表盘 =================
+function ptFor(t,r){ var a=(t/24)*Math.PI*2; return{x:120+r*Math.sin(a),y:120-r*Math.cos(a)}; }
+function arcPath(a0,a1,r){
+  var d0=((a1-a0)%24+24)%24, d=d0>12?d0-24:d0;
+  if(Math.abs(d)<0.017)return '';
+  var p0=ptFor(a0,r),p1=ptFor(a1,r),sw=d>0?1:0;
+  return 'M '+p0.x.toFixed(1)+' '+p0.y.toFixed(1)+' A '+r+' '+r+' 0 0 '+sw+' '+p1.x.toFixed(1)+' '+p1.y.toFixed(1);
+}
+function initTicks(){
+  var g=$('ticks'), lg=$('hourLabels'), html='',h,i,p1,p2,cls,label;
+  for(h=0;h<24;h++){
+    cls=(h%3===0)?'major':'minor';
+    p1=ptFor(h,100); p2=ptFor(h,h%3===0?88:94);
+    html+='<line x1="'+p1.x.toFixed(1)+'" y1="'+p1.y.toFixed(1)+'" x2="'+p2.x.toFixed(1)+'" y2="'+p2.y.toFixed(1)+'" stroke="#c9c3b4" stroke-width="'+(h%3===0?2.5:1)+'"/>';
+  }
+  g.innerHTML=html;
+  html='';
+  for(h=0;h<24;h+=3){ p=ptFor(h,68); html+='<text x="'+p.x.toFixed(1)+'" y="'+(p.y+3).toFixed(1)+'" text-anchor="middle" font-size="10" fill="#8f8c96">'+h+'</text>'; }
+  lg.innerHTML=html;
+}
+function renderClock(st){
+  var s=getSettings(), lv=levelOf(st.E,s.levels);
+  $('clockRing').setAttribute('stroke',lv.color);
+  $('clockRing').setAttribute('fill',(s.colors||DEFAULT_SETTINGS.colors).card);
+  var felCol=HAND_COLORS[s.handColor]||'#8b7cf6';
+  $('handFelt').setAttribute('stroke',felCol);
+  if(st.felt!=null){
+    var pf=ptFor(st.felt,96); $('handFelt').setAttribute('x2',pf.x.toFixed(1)); $('handFelt').setAttribute('y2',pf.y.toFixed(1));
+  }
+  var pa=ptFor(st.actual,80); $('handActual').setAttribute('x2',pa.x.toFixed(1)); $('handActual').setAttribute('y2',pa.y.toFixed(1));
+  var dnow=new Date(Date.now()), secs=dnow.getSeconds()+dnow.getMilliseconds()/1000;
+  var psec=ptFor(secs*0.4,50); $('handSec').setAttribute('x2',psec.x.toFixed(1)); $('handSec').setAttribute('y2',psec.y.toFixed(1));
+  var arc=$('clockArc'), fan=$('clockFan');
+  if(st.felt!=null&&st.dev!=null){
+    arc.setAttribute('d',arcPath(st.actual,st.felt,64));
+    arc.setAttribute('stroke',lv.color);
+    arc.setAttribute('stroke-width','12');
+    arc.setAttribute('opacity','0.35');
+    // 扇形填充替代文字标签：快=淡红（体感走得快=在前=欠账），慢=淡绿
+    var a0=st.actual, a1=st.felt, dd=(((a1-a0)%24)+24)%24; if(dd>12)dd-=24;
+    if(Math.abs(dd)>=0.017){
+      var p0=ptFor(a0,64), p1=ptFor(a1,64), sw=dd>0?1:0;
+      fan.setAttribute('d','M 120 120 L '+p0.x.toFixed(1)+' '+p0.y.toFixed(1)+' A 64 64 0 0 '+sw+' '+p1.x.toFixed(1)+' '+p1.y.toFixed(1)+' Z');
+      fan.setAttribute('fill',st.dev>=0?'#d94a52':'#2f9e63');
+      fan.setAttribute('opacity','0.13');
+    }else{ fan.setAttribute('d',''); }
+  }else{ arc.setAttribute('d',''); fan.setAttribute('d',''); }
+}
+function renderMain(){
+  var now=Date.now(), st=stateAt(now);
+  $('nowTime').textContent=fmtHour(timeOfDay(now));
+  var recs=st.records;
+  var onboard=$('onboarding'), dash=$('mainDash');
+  if(!recs.length){
+    onboard.classList.remove('hidden'); dash.classList.add('hidden');
+    return;
+  }
+  onboard.classList.add('hidden'); dash.classList.remove('hidden');
+  renderClock(st);
+  var s=getSettings(), lv=levelOf(st.E,s.levels);
+  $('feltVal').textContent=st.felt==null?'--:--':fmtHour(st.felt);
+  $('actVal').textContent=fmtHour(st.actual);
+  var dv=$('devVal');
+  if(st.dev==null){ dv.textContent='—'; dv.style.color=''; }
+  else{
+    dv.textContent=(st.dev>=0?'快 ':'慢 ')+Math.abs(st.dev).toFixed(1)+'h';
+    dv.style.color=st.dev>=0?'#d94a52':'#2f9e63';
+  }
+  $('eVal').textContent=st.E.toFixed(1)+'h';
+  $('sleep24Val').textContent=fmtDur(st.sleep24);
+  var lc=$('levelChip'); lc.innerHTML='<b style="color:'+lv.color+'">'+lv.name+'</b>';
+  $('tBed').textContent=s.targetBed; $('tWake').textContent=s.targetWake;
+  $('sleepingBanner').classList.toggle('hidden',!st.sleeping);
+  var adv=generateAdvice(st);
+  $('advTitle').textContent=adv.title; $('adviceBody').textContent=adv.body;
+}
+
+// ================= 记录 =================
+function openForm(id,sleepStr,wakeStr){
+  $('rfId').value=id||'';
+  $('rfSleep').value=sleepStr||'';
+  $('rfWake').value=wakeStr||(id?'':isoLocal(new Date()));
+  updateFieldLabels();
+  $('rfTitle').textContent=id?'编辑睡眠':'记一笔睡眠';
+}
+function clearForm(){ $('rfId').value=''; $('rfSleep').value=''; $('rfWake').value=''; updateFieldLabels(); $('rfTitle').textContent='记一笔睡眠'; }
+function onRecordSubmit(ev){
+  ev.preventDefault();
+  var id=$('rfId').value,s=parseInput($('rfSleep').value),w=parseInput($('rfWake').value);
+  if(isNaN(s)||isNaN(w)){ alert('时间格式不对。示例：08-05 22:00（月-日 时:分）；只填 22:00 则视为今天'); return false; }
+  if(w<=s){ alert('醒来时间要在入睡之后'); return false; }
+  var sIso=isoLocal(new Date(s)),wIso=isoLocal(new Date(w));
+  var recs=loadRecords(),found=false,i;
+  if(id){ for(i=0;i<recs.length;i++)if(recs[i].id===id){recs[i].sleepStart=sIso;recs[i].wakeEnd=wIso;found=true;} if(!found){ alert('记录不存在'); return false; } }
+  else{ recs.push({id:''+Date.now()+''+Math.floor(Math.random()*1e6),sleepStart:sIso,wakeEnd:wIso}); }
+  saveRecords(recs);
+  clearForm();
+  renderRecords(); refreshMain();
+  return false;
+}
+function sleepDown(){
+  if(loadPending()){ alert('已经在睡了。如果现在醒了，点「醒来了」。'); return; }
+  savePending({sleepStart:Date.now()});
+  refreshMain();
+}
+function wakeNow(){
+  var pend=loadPending();
+  if(pend){
+    var recs=loadRecords();
+    recs.push({id:''+Date.now()+''+Math.floor(Math.random()*1e6),sleepStart:isoLocal(new Date(pend.sleepStart)),wakeEnd:isoLocal(new Date())});
+    saveRecords(recs); savePending(null);
+    renderRecords(); refreshMain();
+  }else{ openForm(null,null,toLocalInput(Date.now())); gotoTab('records'); }
+}
+function fmtRecLine(rec){
+  var s=new Date(toMs(rec.sleepStart)),w=new Date(toMs(rec.wakeEnd));
+  var dur=(toMs(rec.wakeEnd)-toMs(rec.sleepStart))/3600000;
+  return (s.getMonth()+1)+'/'+s.getDate()+' '+pad2(s.getHours())+':'+pad2(s.getMinutes())+' – '+
+         (w.getMonth()+1)+'/'+w.getDate()+' '+pad2(w.getHours())+':'+pad2(w.getMinutes())+'（'+fmtDur(dur)+'）';
+}
+var recPage=1, PAGE_SIZE=15;
+function renderRecords(keep){
+  if(!keep)recPage=1;
+  var recs=loadRecords();
+  recs.sort(function(a,b){ return toMs(b.wakeEnd)-toMs(a.wakeEnd); });
+  var box=$('recordList'); box.innerHTML='';
+  $('recordsEmpty').classList.toggle('hidden',recs.length>0);
+  var n=Math.min(recs.length,recPage*PAGE_SIZE);
+  for(var i=0;i<n;i++){
+    (function(rec){
+      var div=document.createElement('div'); div.className='rec';
+      var meta=document.createElement('div'); meta.className='meta'; meta.textContent=fmtRecLine(rec);
+      var ops=document.createElement('div'); ops.className='ops';
+      var eb=document.createElement('button'); eb.textContent='编辑'; eb.onclick=function(){ openForm(rec.id,rec.sleepStart,rec.wakeEnd); gotoTab('records'); };
+      var db=document.createElement('button'); db.textContent='删除'; db.onclick=function(){ if(confirm('删除这笔睡眠？')){ var a=loadRecords().filter(function(x){return x.id!==rec.id;}); saveRecords(a); renderRecords(); refreshMain(); } };
+      ops.appendChild(eb); ops.appendChild(db);
+      div.appendChild(meta); div.appendChild(ops);
+      box.appendChild(div);
+    })(recs[i]);
+  }
+  if(recs.length>n){
+    var more=document.createElement('button'); more.className='btn ghost more';
+    more.textContent='显示更早的 '+(recs.length-n)+' 条 ▾';
+    more.onclick=function(){ recPage++; renderRecords(true); };
+    box.appendChild(more);
+  }
+}
+
+// ================= 趋势 =================
+function startOfDay(ms){ var d=new Date(ms); return new Date(d.getFullYear(),d.getMonth(),d.getDate(),0,0,0,0).getTime(); }
+function fmtDay(ms){ var d=new Date(ms); return (d.getMonth()+1)+'/'+d.getDate(); }
+function levelAtWake(rec){
+  var recs=loadRecords(),blocks=[],i,w=toMs(rec.wakeEnd);
+  for(i=0;i<recs.length;i++){ var ww=toMs(recs[i].wakeEnd); if(ww<=w)blocks.push({s:toMs(recs[i].sleepStart),e:ww}); }
+  blocks=mergeBlocks(blocks);
+  var r=computeEAt(blocks,w);
+  return levelOf(r.E,getSettings().levels);
+}
+function pushSegments(arr,s,e,color){
+  var cur=s, first=true;
+  while(cur<e){
+    var d=new Date(cur), next=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1,0,0,0,0).getTime();
+    var end=Math.min(e,next);
+    arr.push({s:cur,e:end,color:color,cont:!first});
+    cur=end; first=false;
+  }
+}
+var rasterLimit=7;
+function rasterMore(){
+  rasterLimit=(rasterLimit===7)?31:7;
+  renderRaster(loadRecords());
+}
+function renderRaster(recs){
+  var box=$('raster'); box.innerHTML='';
+  var segs=[],first=null,last=null,i,rec,lv,s,e;
+  for(i=0;i<recs.length;i++){
+    rec=recs[i]; s=toMs(rec.sleepStart); e=toMs(rec.wakeEnd);
+    if(first==null||s<first)first=s;
+    if(last==null||e>last)last=e;
+    lv=levelAtWake(rec);
+    pushSegments(segs,s,e,lv.color);
+  }
+  var today=startOfDay(Date.now());
+  var d0=startOfDay(first);
+  if(d0<today-(rasterLimit-1)*86400000)d0=today-(rasterLimit-1)*86400000;
+  var nDays=Math.round((today-d0)/86400000)+1;
+  var head=document.createElement('div'); head.className='raster-head';
+  head.textContent='近 '+nDays+' 天 · '+fmtDay(d0)+' – '+fmtDay(today)+' · 每行一天，跨半夜睡眠拆成两行、右侧时长各算各的 · 点行补记';
+  box.appendChild(head);
+  // 每天总睡眠时长：按拆分后的色块归属当天（跨半夜各算各的）
+  var dayTot={};
+  for(i=0;i<segs.length;i++){
+    var dk=startOfDay(segs[i].s);
+    dayTot[dk]=(dayTot[dk]||0)+(segs[i].e-segs[i].s)/3600000;
+  }
+  for(var t=d0;t<=today;t+=86400000){
+    (function(day){
+      var row=document.createElement('div'); row.className='raster-row'+(day===today?' today':'');
+      row.title='点击补记这一天';
+      row.addEventListener('click',function(){ backfillDay(day); });
+      var lab=document.createElement('div'); lab.className='raster-day'; lab.textContent=fmtDay(day);
+      var track=document.createElement('div'); track.className='raster-track';
+      for(var j=0;j<segs.length;j++){
+        if(startOfDay(segs[j].s)===day){
+          var seg=document.createElement('div'); seg.className='raster-seg';
+          seg.style.left=(timeOfDay(segs[j].s)/24*100).toFixed(2)+'%';
+          seg.style.width=((segs[j].e-segs[j].s)/86400000*100).toFixed(2)+'%';
+          seg.style.background=segs[j].color;
+          if(segs[j].cont)seg.innerHTML='<span class="cont">↷</span>';
+          track.appendChild(seg);
+        }
+      }
+      var tot=document.createElement('div'); tot.className='raster-tot';
+      tot.textContent=(dayTot[day]?(dayTot[day].toFixed(1)+'h'):'');
+      row.appendChild(lab); row.appendChild(track); row.appendChild(tot); box.appendChild(row);
+    })(t);
+  }
+  var axis=document.createElement('div'); axis.className='raster-axis';
+  var ah=[0,6,12,18,24];
+  for(i=0;i<ah.length;i++){
+    var sp=document.createElement('span'); sp.style.left=((ah[i]/24)*100).toFixed(2)+'%';
+    sp.textContent=ah[i]+':00';
+    axis.appendChild(sp);
+  }
+  box.appendChild(axis);
+  if(first!=null&&startOfDay(first)<d0){
+    var more=document.createElement('button'); more.type='button'; more.className='btn ghost more';
+    more.textContent=(rasterLimit===7)?'展开更早（最多31天）▾':'折叠 ▴';
+    more.onclick=rasterMore;
+    box.appendChild(more);
+  }
+}
+function renderWakeBars(recs){
+  var box=$('wakeBars'); box.innerHTML='<div class="ref" style="bottom:66.666%"></div>';
+  var byWake=recs.slice().sort(function(a,b){return toMs(a.wakeEnd)-toMs(b.wakeEnd);});
+  var n=getSettings().statN||14;
+  var last=byWake.slice(Math.max(0,byWake.length-n));
+  var vals=[];
+  for(var i=0;i<last.length;i++){
+    (function(rec){
+      var w=toMs(rec.wakeEnd),blocks=[],j;
+      for(j=0;j<byWake.length;j++){ var ww=toMs(byWake[j].wakeEnd); if(ww<=w)blocks.push({s:toMs(byWake[j].sleepStart),e:ww}); }
+      blocks=mergeBlocks(blocks);
+      var r=computeEAt(blocks,w);
+      var lv=levelOf(r.E,getSettings().levels);
+      var d=document.createElement('div'); d.className='bar';
+      d.style.height=Math.max(2,Math.min(100,r.E/24*100)).toFixed(1)+'%';
+      d.style.background=lv.color;
+      var lab=document.createElement('label'); lab.textContent=r.E.toFixed(1)+'h';
+      d.appendChild(lab);
+      box.appendChild(d);
+      vals.push(w);
+    })(last[i]);
+  }
+  // 柱下日期轴：一日多次用 ②③④ 标注区分
+  var axis=$('barAxis'); axis.innerHTML='';
+  var seen={};
+  for(i=0;i<vals.length;i++){
+    var dk=fmtDay(vals[i]);
+    seen[dk]=(seen[dk]||0)+1;
+    var k=seen[dk];
+    var c=document.createElement('span');
+    c.textContent=dk+(k>1?(k===2?'②':k===3?'③':k===4?'④':('·'+k)):'');
+    axis.appendChild(c);
+  }
+}
+function renderLevelDist(recs){
+  var byWake=recs.slice().sort(function(a,b){return toMs(a.wakeEnd)-toMs(b.wakeEnd);});
+  var n=byWake.slice(Math.max(0,byWake.length-(getSettings().statN||14)));
+  var cnt={正常:0,疲劳:0,很累:0,极限:0};
+  for(var i=0;i<n.length;i++){
+    var lv=levelAtWake(n[i]);
+    cnt[lv.name]=(cnt[lv.name]||0)+1;
+  }
+  var total=n.length||1;
+  var order=[['正常','#34b67a'],['疲劳','#e0a83c'],['很累','#e0813a'],['极限','#d94a52']];
+  var html='';
+  for(i=0;i<order.length;i++){
+    var v=cnt[order[i][0]]||0;
+    html+='<span style="background:'+order[i][1]+';width:'+(v/total*100).toFixed(1)+'%"></span>';
+  }
+  $('levelDist').innerHTML=html;
+  if(n.length){
+    $('distD1').textContent=fmtDay(toMs(n[0].wakeEnd));
+    $('distD2').textContent=fmtDay(toMs(n[n.length-1].wakeEnd));
+  }
+}
+function renderSleepLine(recs){
+  var byWake=recs.slice().sort(function(a,b){return toMs(a.wakeEnd)-toMs(b.wakeEnd);});
+  var statN=getSettings().statN||14;
+  var last=byWake.slice(Math.max(0,byWake.length-statN));
+  var pts=[],wakes=[],i,w;
+  for(i=0;i<last.length;i++){
+    w=toMs(last[i].wakeEnd);
+    wakes.push(w);
+    pts.push(rollingSleep24(mergeBlocks(last.slice(0,i+1).map(function(r){return{s:toMs(r.sleepStart),e:toMs(r.wakeEnd)};})),w));
+  }
+  var ideal=getSettings().idealSleepH||7;
+  var W=320,H=124,padL=26,padR=8,padT=14,padB=16;
+  var plotW=W-padL-padR, plotH=H-padT-padB;
+  var maxV=12,minV=0; // 0-12h 比例舒服
+  function y(v){ return padT+(maxV-Math.min(maxV,Math.max(minV,v)))/(maxV-minV)*plotH; }
+  function x(i){ return pts.length>1? padL+plotW*i/(pts.length-1) : (W)/2; }
+  var html='';
+  // 纵轴网格 + 刻度（0/4/8/12 浅灰）
+  var ticks=[0,4,8,12];
+  for(i=0;i<ticks.length;i++){
+    if(ideal>minV&&ideal<=maxV&&ticks[i]===ideal)continue; // 与理想线重合时让位给紫线
+    var yy=y(ticks[i]);
+    html+='<line x1="'+padL+'" y1="'+yy.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+yy.toFixed(1)+'" stroke="#e3e0d2" stroke-width="1"/>';
+    html+='<text x="'+(padL-5)+'" y="'+(yy+3).toFixed(1)+'" font-size="9" fill="#6a6b62" text-anchor="end">'+ticks[i]+'h</text>';
+  }
+  if(pts.length>=1){
+    // 理想睡眠时长紫虚线
+    if(ideal>minV&&ideal<=maxV){
+      var iy=y(ideal);
+      html+='<line x1="'+padL+'" y1="'+iy.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+iy.toFixed(1)+'" stroke="#7a6ce0" stroke-width="1.5" stroke-dasharray="5 3"/>';
+      html+='<text x="'+(W-padR-2)+'" y="'+(iy-3).toFixed(1)+'" font-size="9" fill="#7a6ce0" text-anchor="end">理想'+ideal+'h</text>';
+    }
+    // 每点竖虚线（看落在哪一天，一日多次同天会有多根）
+    for(i=0;i<pts.length;i++){
+      html+='<line x1="'+x(i).toFixed(1)+'" y1="'+padT+'" x2="'+x(i).toFixed(1)+'" y2="'+(H-padB)+'" stroke="#d8d4c4" stroke-width="1" stroke-dasharray="2 3"/>';
+    }
+    // 日界刻度：相邻两次醒来跨天时，横轴上画小分界竖线
+    for(i=1;i<wakes.length;i++){
+      if(startOfDay(wakes[i])!==startOfDay(wakes[i-1])){
+        var bx=(x(i)+x(i-1))/2;
+        html+='<line x1="'+bx.toFixed(1)+'" y1="'+(H-padB)+'" x2="'+bx.toFixed(1)+'" y2="'+(H-padB+4)+'" stroke="#6a6b62" stroke-width="1.5"/>';
+      }
+    }
+    var coords=[];
+    for(i=0;i<pts.length;i++){ coords.push(x(i).toFixed(1)+','+y(pts[i]).toFixed(1)); }
+    html+='<polyline points="'+coords.join(' ')+'" fill="none" stroke="#7a6ce0" stroke-width="2"/>';
+    // 每点数值 + 圆点
+    for(i=0;i<pts.length;i++){
+      html+='<text x="'+x(i).toFixed(1)+'" y="'+(y(pts[i])-4).toFixed(1)+'" font-size="9" fill="#4a4a55" text-anchor="middle" font-weight="600">'+pts[i].toFixed(1)+'h</text>';
+      html+='<circle cx="'+x(i).toFixed(1)+'" cy="'+y(pts[i]).toFixed(1)+'" r="2.5" fill="#7a6ce0"/>';
+    }
+    // 坐标轴边框
+    html+='<line x1="'+padL+'" y1="'+padT+'" x2="'+padL+'" y2="'+(H-padB)+'" stroke="#c9c3b4" stroke-width="1"/>';
+    html+='<line x1="'+padL+'" y1="'+(H-padB)+'" x2="'+(W-padR)+'" y2="'+(H-padB)+'" stroke="#c9c3b4" stroke-width="1"/>';
+    // 横轴日期：每个日界刻度（跨过午夜处）下标那个新一天的日期；同一片都无跨天时兜底首/尾日期
+    var labCount=0, prevLabX=-1;
+    for(i=1;i<wakes.length;i++){
+      if(startOfDay(wakes[i])!==startOfDay(wakes[i-1])){
+        var bx=(x(i)+x(i-1))/2;
+        if(bx-prevLabX>=20){
+          html+='<text x="'+bx.toFixed(1)+'" y="'+(H-padB+10)+'" font-size="8.5" fill="#6a6b62" text-anchor="middle">'+fmtDay(wakes[i])+'</text>';
+          prevLabX=bx; labCount++;
+        }
+      }
+    }
+    if(labCount===0){
+      html+='<text x="'+x(0).toFixed(1)+'" y="'+(H-padB+10)+'" font-size="8.5" fill="#8f8c96" text-anchor="middle">'+fmtDay(wakes[0])+'</text>';
+      html+='<text x="'+x(pts.length-1).toFixed(1)+'" y="'+(H-padB+10)+'" font-size="8.5" fill="#8f8c96" text-anchor="middle">'+fmtDay(wakes[pts.length-1])+'</text>';
+    }
+  }
+  $('sleepLine').innerHTML=html;
+}
+function renderSleepDur(recs){
+  var ideal=getSettings().idealSleepH||7, maxH=14;
+  var box=$('sleepDurBars');
+  box.innerHTML='<div class="ref" style="bottom:'+Math.max(0,Math.min(100,ideal/maxH*100)).toFixed(1)+'%"></div>';
+  var byEnd=recs.slice().sort(function(a,b){return toMs(a.wakeEnd)-toMs(b.wakeEnd);});
+  var n=byEnd.slice(Math.max(0,byEnd.length-(getSettings().statN||14)));
+  var vals=[];
+  for(var i=0;i<n.length;i++){
+    (function(rec){
+      var dur=(toMs(rec.wakeEnd)-toMs(rec.sleepStart))/3600000;
+      var d=document.createElement('div'); d.className='bar';
+      d.style.height=Math.max(2,Math.min(100,dur/maxH*100)).toFixed(1)+'%';
+      d.style.background='#5c9e8f';
+      var lab=document.createElement('label'); lab.textContent=dur.toFixed(1)+'h';
+      d.appendChild(lab);
+      box.appendChild(d);
+      vals.push(toMs(rec.wakeEnd));
+    })(n[i]);
+  }
+  var axis=$('sleepDurAxis'); axis.innerHTML='';
+  var seen={};
+  for(i=0;i<vals.length;i++){
+    var dk=fmtDay(vals[i]);
+    seen[dk]=(seen[dk]||0)+1;
+    var k=seen[dk];
+    var c=document.createElement('span');
+    c.textContent=dk+(k>1?(k===2?'②':k===3?'③':k===4?'④':('·'+k)):'');
+    axis.appendChild(c);
+  }
+}
+function renderTrends(){
+  var recs=loadRecords();
+  $('trendEmpty').classList.toggle('hidden',recs.length>0);
+  if(!recs.length)return;
+  renderRaster(recs); renderWakeBars(recs); renderSleepDur(recs); renderLevelDist(recs); renderSleepLine(recs);
+}
+function backfillDay(dayMs){
+  var d=new Date(dayMs);
+  var sleep=isoLocal(new Date(d.getFullYear(),d.getMonth(),d.getDate(),22,0,0,0));
+  var wake=isoLocal(new Date(d.getFullYear(),d.getMonth(),d.getDate()+1,7,0,0,0));
+  openForm(null,sleep,wake); gotoTab('records');
+}
+
+// ================= 设置 =================
+function fillSettings(){
+  var s=getSettings();
+  $('setBedVal').textContent=s.targetBed; $('setWakeVal').textContent=s.targetWake;
+  $('setIdeal').value=s.idealSleepH; $('setHand').value=s.handColor;
+  $('setY').value=s.levels.y; $('setO').value=s.levels.o; $('setR').value=s.levels.r;
+  $('setStatN').value=s.statN||14;
+  var cols=s.colors||DEFAULT_SETTINGS.colors, defs=DEFAULT_SETTINGS.colors;
+  var keys=[['Bg','bg'],['Card','card'],['Line','line'],['Butter','butter'],['Pur','pur']];
+  for(var i=0;i<keys.length;i++){
+    var v=cols[keys[i][1]]||defs[keys[i][1]];
+    $('setCol'+keys[i][0]).value=v;
+    $('sw'+keys[i][0]).style.background=v;
+  }
+}
+function resetColors(){
+  var s=getSettings();
+  s.colors={bg:DEFAULT_SETTINGS.colors.bg,card:DEFAULT_SETTINGS.colors.card,line:DEFAULT_SETTINGS.colors.line,butter:DEFAULT_SETTINGS.colors.butter,pur:DEFAULT_SETTINGS.colors.pur};
+  saveSettings(s); fillSettings(); applyColors();
+}
+function bindSettings(){
+  var inputs=[['setIdeal','idealSleepH'],['setHand','handColor'],['setY','levels.y'],['setO','levels.o'],['setR','levels.r'],['setStatN','statN']];
+  for(var i=0;i<inputs.length;i++){
+    (function(el,key){
+      var node=$(el);
+      node.addEventListener('change',function(){
+        var s=getSettings(),path=key.split('.'),o=s;
+        if(path.length===2)o[path[0]][path[1]]=parse(node.value,el);
+        else o[path[0]]=parse(node.value,el);
+        saveSettings(s); refreshMain(); renderTrends();
+      });
+    })(inputs[i][0],inputs[i][1]);
+  }
+  // 配色：input 即时预览（有效色号就应用），change 存进设置
+  var colKeys=[['setColBg','bg'],['setColCard','card'],['setColLine','line'],['setColButter','butter'],['setColPur','pur']];
+  for(i=0;i<colKeys.length;i++){
+    (function(inputId,key){
+      var node=$(inputId), sw=$('sw'+inputId.slice(6));
+      node.addEventListener('input',function(){
+        var m=/^#?([0-9a-f]{6})$/i.exec(String(node.value||'').trim());
+        if(m){ var hex='#'+m[1].toLowerCase(); sw.style.background=hex; applyOneColor(key,hex); }
+        else{ sw.style.background='transparent'; }
+      });
+      node.addEventListener('change',function(){
+        var m=/^#?([0-9a-f]{6})$/i.exec(String(node.value||'').trim());
+        if(!m){ var cur=getSettings().colors||DEFAULT_SETTINGS.colors; node.value=cur[key]||DEFAULT_SETTINGS.colors[key]; sw.style.background=node.value; }
+        else{
+          var s=getSettings(); if(!s.colors)s.colors={};
+          s.colors[key]='#'+m[1].toLowerCase();
+          saveSettings(s); applyColors();
+        }
+      });
+    })(colKeys[i][0],colKeys[i][1]);
+  }
+}
+function parse(v,el){
+  if(el==='setIdeal')return parseFloat(v)||7;
+  if(el==='setY'||el==='setO'||el==='setR')return parseFloat(v)||0;
+  if(el==='setStatN')return Math.max(5,Math.min(40,parseInt(v,10)||14));
+  return v;
+}
+function exportData(){
+  var data={exportedAt:new Date().toISOString(),records:loadRecords(),settings:getSettings()};
+  var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='醒刻备份-'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+function importData(input){
+  var f=input.files&&input.files[0]; if(!f)return;
+  var reader=new FileReader();
+  reader.onload=function(){
+    try{
+      var d=JSON.parse(reader.result);
+      if(d&&Object.prototype.toString.call(d.records)==='[object Array]')saveRecords(d.records);
+      if(d&&d.settings)saveSettings(d.settings);
+      refreshAll();
+    }catch(e){ alert('导入失败：文件格式不对'); }
+    input.value='';
+  };
+  reader.readAsText(f);
+}
+function clearData(){
+  if(!confirm('确定清空全部记录和设置？此操作不可恢复。'))return;
+  localStorage.removeItem(KEY_RECORDS); localStorage.removeItem(KEY_SETTINGS); localStorage.removeItem(KEY_PENDING);
+  refreshAll();
+}
+
+// ================= 导航 =================
+function gotoTab(name){
+  var secs=['main','records','trends','settings'];
+  for(var i=0;i<secs.length;i++){
+    var isMain=secs[i]==='main';
+    var el=isMain?$('mainWrap'):$('tab-'+secs[i]);
+    el.classList.toggle('hidden',secs[i]!==name);
+  }
+  var btns=document.querySelectorAll('.tabbar button');
+  for(i=0;i<btns.length;i++)btns[i].classList.toggle('on',btns[i].getAttribute('data-tab')===name);
+  if(name==='records')renderRecords();
+  if(name==='trends')renderTrends();
+  if(name==='settings')fillSettings();
+}
+function refreshMain(){ renderMain(); }
+function refreshAll(){ applyColors(); renderMain(); renderRecords(); if(!$('tab-trends').classList.contains('hidden'))renderTrends(); }
+
+// ================= 启动 =================
+function init(){
+  initTicks();
+  applyColors();
+  setupWheel('h',24); setupWheel('m',60);
+  var btns=document.querySelectorAll('.tabbar button');
+  for(var i=0;i<btns.length;i++){
+    (function(b){ b.addEventListener('click',function(){ gotoTab(b.getAttribute('data-tab')); }); })(btns[i]);
+  }
+  bindSettings();
+  renderMain(); renderRecords();
+  setInterval(renderMain,1000);
+  document.addEventListener('visibilitychange',function(){ if(!document.hidden)renderMain(); });
+  window.addEventListener('focus',renderMain);
+  // manifest 与 ServiceWorker 只在 http/https 下注册；file:// 直接打开时跳过，避免控制台报错
+  var p=(typeof location!=='undefined')?location.protocol:'';
+  if(p==='http:'||p==='https:'){
+    var ml=document.createElement('link'); ml.rel='manifest'; ml.href='manifest.webmanifest'; document.head.appendChild(ml);
+    if('serviceWorker' in navigator){ try { navigator.serviceWorker.register('./sw.js'); } catch(e){} }
+  }else if(p==='file:'){
+    // file:// 直开：功能可用，但手机离线/加主屏幕需走服务器；顶部给个提醒
+    var bn=document.createElement('div');
+    bn.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99;background:#3a2f1f;color:#ffd28a;font-size:12px;padding:9px 12px;line-height:1.6;border-bottom:1px solid #5a4a2a;';
+    bn.textContent='双击打开可用，但手机离线/加主屏幕需要走服务器：在 D:\\wake-clock 运行 py -m http.server 8000，再打开 http://localhost:8000';
+    document.body.insertBefore(bn,document.body.firstChild);
+  }
+}
+if(typeof window!=='undefined'){ window.addEventListener('DOMContentLoaded',init); }
+</script>
+</body>
+</html>
