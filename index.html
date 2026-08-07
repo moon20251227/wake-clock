@@ -622,6 +622,7 @@ function mergeBlocks(blocks){
   return out;
 }
 // 计算时刻 t 的有效清醒 E 与校准点（E 最近一次被睡回 0 的醒来时刻）
+// E：醒着 +1h/h、睡着 −2h/h，只保底 0、不设上限（连续醒 30h 就是 30，体感=(校准点+E) mod 24 自会归一）
 // blocks: [{s:ms,e:ms}] 已按 s 排序
 function computeEAt(sortedBlocks,t){
   if(!sortedBlocks.length)return{E:0,anchor:null};
@@ -630,7 +631,7 @@ function computeEAt(sortedBlocks,t){
     iv=sortedBlocks[i];
     if(cur<iv.s){
       dt=Math.min(iv.s,t)-cur;
-      if(dt>0){ E=Math.min(24,E+dt/3600000); cur=iv.s; }
+      if(dt>0){ E=E+dt/3600000; cur=iv.s; }
     }
     if(cur<iv.e&&cur<t){
       dt=Math.min(iv.e,t)-cur;
@@ -639,7 +640,7 @@ function computeEAt(sortedBlocks,t){
       cur=Math.min(iv.e,t);
     }
   }
-  if(cur<t){ E=Math.min(24,E+(t-cur)/3600000); }
+  if(cur<t){ E=E+(t-cur)/3600000; }
   return{E:E,anchor:anchor};
 }
 // 最近24h内"完整结束"的睡眠块时长之和（不截断任何一块）
@@ -1021,26 +1022,29 @@ function renderRaster(recs){
   }
 }
 function renderWakeBars(recs){
-  var box=$('wakeBars'); box.innerHTML='<div class="ref" style="bottom:66.666%"></div>';
   var byWake=recs.slice().sort(function(a,b){return toMs(a.wakeEnd)-toMs(b.wakeEnd);});
   var n=getSettings().statN||14;
   var last=byWake.slice(Math.max(0,byWake.length-n));
-  var vals=[];
-  for(var i=0;i<last.length;i++){
-    (function(rec){
-      var w=toMs(rec.wakeEnd),blocks=[],j;
-      for(j=0;j<byWake.length;j++){ var ww=toMs(byWake[j].wakeEnd); if(ww<=w)blocks.push({s:toMs(byWake[j].sleepStart),e:ww}); }
-      blocks=mergeBlocks(blocks);
-      var r=computeEAt(blocks,w);
-      var lv=levelOf(r.E,getSettings().levels);
-      var d=document.createElement('div'); d.className='bar';
-      d.style.height=Math.max(2,Math.min(100,r.E/24*100)).toFixed(1)+'%';
-      d.style.background=lv.color;
-      var lab=document.createElement('label'); lab.textContent=r.E.toFixed(1)+'h';
-      d.appendChild(lab);
-      box.appendChild(d);
-      vals.push(w);
-    })(last[i]);
+  var items=[],i,j,rec,w,blocks,ww,r,vals=[];
+  for(i=0;i<last.length;i++){
+    rec=last[i]; w=toMs(rec.wakeEnd); blocks=[];
+    for(j=0;j<byWake.length;j++){ ww=toMs(byWake[j].wakeEnd); if(ww<=w)blocks.push({s:toMs(byWake[j].sleepStart),e:ww}); }
+    blocks=mergeBlocks(blocks);
+    r=computeEAt(blocks,w);
+    items.push({E:r.E,color:levelOf(r.E,getSettings().levels).color,w:w});
+  }
+  // 柱高按本次数据最大 E 缩放（保底 24h）：等效清醒无上限，E 超 24 不再顶死
+  var maxE=24;
+  for(i=0;i<items.length;i++){ if(items[i].E>maxE)maxE=items[i].E; }
+  var box=$('wakeBars'); box.innerHTML='<div class="ref" style="bottom:'+(16/maxE*100).toFixed(1)+'%"></div>';
+  for(i=0;i<items.length;i++){
+    var d=document.createElement('div'); d.className='bar';
+    d.style.height=Math.max(2,items[i].E/maxE*100).toFixed(1)+'%';
+    d.style.background=items[i].color;
+    var lab=document.createElement('label'); lab.textContent=items[i].E.toFixed(1)+'h';
+    d.appendChild(lab);
+    box.appendChild(d);
+    vals.push(items[i].w);
   }
   // 柱下日期轴：一日多次用 ②③④ 标注区分
   var axis=$('barAxis'); axis.innerHTML='';
