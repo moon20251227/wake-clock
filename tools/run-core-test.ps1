@@ -68,6 +68,8 @@ T('5.E不封顶=30(醒30h)', rd.E, 30);
 T('5.felt=14:00', (((timeOfDay(rd.anchor)+rd.E)%24)+24)%24, 14);
 T('5.dev=0不转慢', normDev((((timeOfDay(rd.anchor)+rd.E)%24)+24)%24, timeOfDay(D(2026,8,6,14,0))), 0);
 TS('5.等级=极限', levelOf(rd.E,L).name, '极限');
+var __d5dev=normDev((((timeOfDay(rd.anchor)+rd.E)%24)+24)%24, timeOfDay(D(2026,8,6,14,0)));
+if(Math.abs(__d5dev)>12){ __fails++; WScript.Echo('FAIL 5.弧线界 |dev|>12 got='+__d5dev); } else { WScript.Echo('PASS  5.弧线界 |dev|<=12（E>24 弧线仍最多半圈）'); }
 
 TS('L15.9=正常', levelOf(15.9,L).name, '正常');
 TS('L16=疲劳', levelOf(16,L).name, '疲劳');
