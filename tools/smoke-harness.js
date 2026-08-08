@@ -43,6 +43,24 @@ try {
   // 日期输入：M/D 与 YYYY/M/D 可解析，非法为 NaN
   if (isNaN(dtParseDate('8-7')) || isNaN(dtParseDate('2026/8/7'))) { __fails++; WScript.Echo('FAIL dtParseDate valid'); }
   if (!isNaN(dtParseDate('abc')) || !isNaN(dtParseDate('32-45'))) { __fails++; WScript.Echo('FAIL dtParseDate invalid'); }
+  // 打字不再被自动回填打断：输 "1" 时输入框保持原文、时刻/滚轮跟随；失焦归一化；确定提交
+  openForm(null, '2026-08-06T22:00', '2026-08-07T06:00');
+  pickField('sleep');
+  $('dtTimeInput').value = '1';
+  dtOnInput();
+  if ($('dtTimeInput').value !== '1') { __fails++; WScript.Echo('FAIL typing raw preserved got=' + $('dtTimeInput').value); }
+  var dty = new Date(dtMs);
+  if (dty.getHours() !== 1 || dty.getMinutes() !== 0) { __fails++; WScript.Echo('FAIL typing drives time h=' + dty.getHours()); }
+  dtBlur();
+  if ($('dtTimeInput').value !== '01:00') { __fails++; WScript.Echo('FAIL typing blur normalized got=' + $('dtTimeInput').value); }
+  dtDone();
+  if ($('rfSleep').value !== '2026-08-06T01:00') { __fails++; WScript.Echo('FAIL typing commit got=' + $('rfSleep').value); }
+  // 滚轮循环：wrapIdx 边界环绕（分钟 59→0、时 23→0）
+  if (wrapIdx(-1, 60) !== 59) { __fails++; WScript.Echo('FAIL wrapIdx -1'); }
+  if (wrapIdx(60, 60) !== 0) { __fails++; WScript.Echo('FAIL wrapIdx 60'); }
+  if (wrapIdx(-2, 24) !== 22) { __fails++; WScript.Echo('FAIL wrapIdx -2'); }
+  if (wrapIdx(24, 24) !== 0) { __fails++; WScript.Echo('FAIL wrapIdx 24'); }
+  if (wrapIdx(23, 24) !== 23) { __fails++; WScript.Echo('FAIL wrapIdx 23'); }
   // 配色：默认色号写进设置页输入框/色块，applyColors/applyOneColor 在 stub（无 documentElement）下不抛错
   applyColors();
   applyOneColor('bg', '#123456');

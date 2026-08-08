@@ -278,7 +278,7 @@
       <div class="wheel" id="wheelM"><div class="wh-list" id="wheelOptsM"></div></div>
     </div>
     <div class="dts-line">
-      <input id="dtTimeInput" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="dts-time" oninput="dtOnInput()">
+      <input id="dtTimeInput" type="text" inputmode="numeric" placeholder="HH:MM" maxlength="5" class="dts-time" oninput="dtOnInput()" onfocus="this.select()" onblur="dtBlur()">
       <button type="button" class="dts-btn sm" onclick="dtNow()">此刻</button>
     </div>
     <div class="dts-chips">
@@ -434,6 +434,7 @@ function dtParseText(v){
 }
 function wheelVal(col){ var d=new Date(dtMs); return col==='h'?d.getHours():d.getMinutes(); }
 function wheelTransform(idx){ return (WH_HALF-WH_ROW/2)-idx*WH_ROW; }
+function wrapIdx(v,n){ v=((v%n)+n)%n; return v; }
 function snapWheels(){
   var d=new Date(dtMs);
   $('wheelOptsH').style.transform='translateY('+wheelTransform(d.getHours())+'px)';
@@ -445,8 +446,14 @@ function setWheelVal(col,v){
   dtMs=d.getTime(); syncSheet();
 }
 function dtOnInput(){
+  // 只让滚轮/时刻跟随，不把输入框回写成规范格式——否则敲 "1" 立刻变 "01:00"（5字符占满），两位数小时就打不出来了
   var p=dtParseText($('dtTimeInput').value);
-  if(p){ var d=new Date(dtMs); d.setHours(p.h,p.m,0,0); dtMs=d.getTime(); syncSheet(); }
+  if(p){ var d=new Date(dtMs); d.setHours(p.h,p.m,0,0); dtMs=d.getTime(); snapWheels(); }
+}
+function dtBlur(){
+  var p=dtParseText($('dtTimeInput').value);
+  if(p){ var d=new Date(dtMs); d.setHours(p.h,p.m,0,0); dtMs=d.getTime(); }
+  syncSheet();
 }
 function setupWheel(col,count){
   var wheel=document.getElementById('wheel'+(col==='h'?'H':'M'));
@@ -467,7 +474,7 @@ function setupWheel(col,count){
     var dy=e.clientY-startY;
     if(dy>4||dy<-4)moved=true;
     var idx=startIdx-Math.round(dy/WH_ROW);
-    idx=Math.max(0,Math.min(count-1,idx));
+    idx=wrapIdx(idx,count);  // 循环：滚过 23→0、0→23
     setWheelVal(col,idx);
   });
   wheel.addEventListener('pointerup',function(e){
@@ -480,8 +487,7 @@ function setupWheel(col,count){
   wheel.addEventListener('pointercancel',function(){ dragging=false; });
   wheel.addEventListener('wheel',function(e){
     if(e.preventDefault)e.preventDefault();
-    var v=wheelVal(col)+((e.deltaY>0)?1:-1);
-    v=Math.max(0,Math.min(count-1,v));
+    var v=wrapIdx(wheelVal(col)+((e.deltaY>0)?1:-1),count);
     setWheelVal(col,v);
   });
 }
