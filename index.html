@@ -198,7 +198,7 @@
       <div class="reads">
         <div>体感 <b id="feltVal">--:--</b></div>
         <div>实际 <b id="actVal">--:--</b></div>
-        <div>偏移 <b id="devVal">—</b></div>
+        <div>清醒 <b id="devVal">—</b></div>
       </div>
     </div>
 
@@ -719,7 +719,9 @@ function stateAt(now){
   blocks=mergeBlocks(blocks);
   var r=computeEAt(blocks,now);
   var actual=timeOfDay(now), felt=null, dev=null;
-  if(r.anchor!=null){ felt=(((timeOfDay(r.anchor)+r.E)%24)+24)%24; dev=normDev(felt,actual); }
+  if(r.anchor!=null){ felt=(((timeOfDay(r.anchor)+r.E)%24)+24)%24; }
+  // 偏移改为「清醒超量」= 等效清醒 E − 正常清醒日(16h)：正值=超(快/红)、负值=少(慢/绿)，不再受 ±12h 限制
+  dev=r.E-16;
   return{E:r.E,anchor:r.anchor,felt:felt,dev:dev,actual:actual,sleep24:rollingSleep24(blocks,now),sleeping:sleeping,records:recs,pending:pend};
 }
 function lastWakeH(st){
@@ -744,9 +746,9 @@ function supRule(st,s){
 function generateAdvice(st){
   var s=getSettings(),bed=parseH(s.targetBed),wake=parseH(s.targetWake),nowH=st.actual,E=st.E,lines=[];
   if(st.sleeping)return{title:'睡眠中',body:'你正在睡。睡到自然醒或 '+s.targetWake+' 起，E 会继续回落。'};
-  if(st.felt!=null&&st.dev!=null){
-    var dir=st.dev>=0?'快':'慢';
-    lines.push('你的身体时间走得比实际'+dir+' '+Math.abs(st.dev).toFixed(1)+'h，即走在实际时间的'+(st.dev>=0?'前面':'后面')+'（身体觉得现在≈'+fmtHour(st.felt)+'）。');
+  if(st.dev!=null){
+    var over=st.dev>=0;
+    lines.push('你的有效清醒 '+st.E.toFixed(1)+'h，比正常清醒日(16h) '+(over?'多':'少')+' '+Math.abs(st.dev).toFixed(1)+'h——'+(over?'清醒超量，该睡了。':'休息得不错，保持节奏。')+(st.felt!=null?'（身体觉得现在≈'+fmtHour(st.felt)+'）':''));
   }
   var dur=hoursUntilWake(nowH,wake);
   if(E>=20){
@@ -791,11 +793,33 @@ function clearExtra(){ var el=$('adviceExtra'); el.classList.add('hidden'); el.t
 
 // ================= 表盘 =================
 function ptFor(t,r){ var a=(t/24)*Math.PI*2; return{x:120+r*Math.sin(a),y:120-r*Math.cos(a)}; }
-function arcPath(a0,a1,r){
-  var d0=((a1-a0)%24+24)%24, d=d0>12?d0-24:d0;
-  if(Math.abs(d)<0.017)return '';
-  var p0=ptFor(a0,r),p1=ptFor(a1,r),sw=d>0?1:0;
-  return 'M '+p0.x.toFixed(1)+' '+p0.y.toFixed(1)+' A '+r+' '+r+' 0 0 '+sw+' '+p1.x.toFixed(1)+' '+p1.y.toFixed(1);
+// 清醒超量弧：从实际时刻起沿表盘扫 |sweepH| 小时（超=顺时针红，少=逆时针绿），超过24h真的绕第二圈、第三圈
+function sweepArcPath(startH,sweepH,r){
+  if(Math.abs(sweepH)<0.017)return '';
+  var dir=sweepH>0?1:-1, absS=Math.abs(sweepH), full=Math.floor(absS/24), rem=absS-full*24;
+  var h=startH, p=ptFor(startH,r), d='M '+p.x.toFixed(1)+' '+p.y.toFixed(1), i, swf=dir>0?1:0;
+  for(i=0;i<full;i++){
+    var h1=((h+dir*12)%24+24)%24, p1=ptFor(h1,r);
+    var h2=((h+dir*24)%24+24)%24, p2=ptFor(h2,r);
+    d+=' A '+r+' '+r+' 0 0 '+swf+' '+p1.x.toFixed(1)+' '+p1.y.toFixed(1);
+    d+=' A '+r+' '+r+' 0 0 '+swf+' '+p2.x.toFixed(1)+' '+p2.y.toFixed(1);
+    h=h2;
+  }
+  if(rem>=0.017){
+    var he=((h+dir*rem)%24+24)%24, pe=ptFor(he,r), large=rem>12?1:0;
+    d+=' A '+r+' '+r+' 0 '+large+' '+swf+' '+pe.x.toFixed(1)+' '+pe.y.toFixed(1);
+  }
+  return d;
+}
+// 扇形：只填看得见的部分——整圈部分只描边不填充，余数(<24h)那段从圆心填到弧端；正好整圈则无扇形
+function sweepFanPath(startH,sweepH,r){
+  if(Math.abs(sweepH)<0.017)return '';
+  var dir=sweepH>0?1:-1, absS=Math.abs(sweepH), full=Math.floor(absS/24), rem=absS-full*24;
+  if(rem<0.017)return '';
+  var h0=((startH+dir*full*24)%24+24)%24, p0=ptFor(h0,r);
+  var h1=((h0+dir*rem)%24+24)%24, p1=ptFor(h1,r);
+  var large=rem>12?1:0, swf=dir>0?1:0;
+  return 'M 120 120 L '+p0.x.toFixed(1)+' '+p0.y.toFixed(1)+' A '+r+' '+r+' 0 '+large+' '+swf+' '+p1.x.toFixed(1)+' '+p1.y.toFixed(1)+' Z';
 }
 function initTicks(){
   var g=$('ticks'), lg=$('hourLabels'), html='',h,i,p1,p2,cls,label;
@@ -822,19 +846,16 @@ function renderClock(st){
   var dnow=new Date(Date.now()), secs=dnow.getSeconds()+dnow.getMilliseconds()/1000;
   var psec=ptFor(secs*0.4,50); $('handSec').setAttribute('x2',psec.x.toFixed(1)); $('handSec').setAttribute('y2',psec.y.toFixed(1));
   var arc=$('clockArc'), fan=$('clockFan');
-  if(st.felt!=null&&st.dev!=null){
-    arc.setAttribute('d',arcPath(st.actual,st.felt,64));
-    arc.setAttribute('stroke',lv.color);
+  if(st.dev!=null){
+    // 弧线=清醒超量：超=顺时针红、少=逆时针绿，从实际时刻扫起，超过24h绕圈
+    var color=st.dev>=0?'#d94a52':'#2f9e63';
+    arc.setAttribute('d',sweepArcPath(st.actual,st.dev,64));
+    arc.setAttribute('stroke',color);
     arc.setAttribute('stroke-width','12');
     arc.setAttribute('opacity','0.35');
-    // 扇形填充替代文字标签：快=淡红（体感走得快=在前=欠账），慢=淡绿
-    var a0=st.actual, a1=st.felt, dd=(((a1-a0)%24)+24)%24; if(dd>12)dd-=24;
-    if(Math.abs(dd)>=0.017){
-      var p0=ptFor(a0,64), p1=ptFor(a1,64), sw=dd>0?1:0;
-      fan.setAttribute('d','M 120 120 L '+p0.x.toFixed(1)+' '+p0.y.toFixed(1)+' A 64 64 0 0 '+sw+' '+p1.x.toFixed(1)+' '+p1.y.toFixed(1)+' Z');
-      fan.setAttribute('fill',st.dev>=0?'#d94a52':'#2f9e63');
-      fan.setAttribute('opacity','0.13');
-    }else{ fan.setAttribute('d',''); }
+    fan.setAttribute('d',sweepFanPath(st.actual,st.dev,64));
+    fan.setAttribute('fill',color);
+    fan.setAttribute('opacity','0.13');
   }else{ arc.setAttribute('d',''); fan.setAttribute('d',''); }
 }
 function renderMain(){
@@ -853,10 +874,9 @@ function renderMain(){
   $('actVal').textContent=fmtHour(st.actual);
   var dv=$('devVal');
   if(st.dev==null){ dv.textContent='—'; dv.style.color=''; }
-  else{
-    dv.textContent=(st.dev>=0?'快 ':'慢 ')+Math.abs(st.dev).toFixed(1)+'h';
-    dv.style.color=st.dev>=0?'#d94a52':'#2f9e63';
-  }
+  else if(st.dev>0){ dv.textContent='超 '+st.dev.toFixed(1)+'h'; dv.style.color='#d94a52'; }
+  else if(st.dev<0){ dv.textContent='少 '+Math.abs(st.dev).toFixed(1)+'h'; dv.style.color='#2f9e63'; }
+  else{ dv.textContent='正好'; dv.style.color=''; }
   $('eVal').textContent=st.E.toFixed(1)+'h';
   $('sleep24Val').textContent=fmtDur(st.sleep24);
   var lc=$('levelChip'); lc.innerHTML='<b style="color:'+lv.color+'">'+lv.name+'</b>';

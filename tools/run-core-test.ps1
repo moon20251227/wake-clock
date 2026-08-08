@@ -39,7 +39,7 @@ var felt1=(((timeOfDay(r.anchor)+r.E)%24)+24)%24;
 T('1.E(22:00)=17.5', r.E, 17.5);
 T('1.anchor=昨天10:30', timeOfDay(r.anchor), 10.5);
 T('1.felt=04:00', felt1, 4);
-T('1.dev=+6', normDev(felt1, 22), 6);
+T('1.清醒超=1.5', r.E-16, 1.5);
 TS('1.等级=疲劳', levelOf(r.E,L).name, '疲劳');
 T('1.最近24h睡眠=6h', rollingSleep24(b, D(2026,8,6,22,0)), 6);
 
@@ -66,10 +66,18 @@ var d5=[{s:D(2026,8,5,2,0),e:D(2026,8,5,8,0)}];
 var rd=computeEAt(d5, D(2026,8,6,14,0));
 T('5.E不封顶=30(醒30h)', rd.E, 30);
 T('5.felt=14:00', (((timeOfDay(rd.anchor)+rd.E)%24)+24)%24, 14);
-T('5.dev=0不转慢', normDev((((timeOfDay(rd.anchor)+rd.E)%24)+24)%24, timeOfDay(D(2026,8,6,14,0))), 0);
+T('5.清醒超=14(醒30h)', rd.E-16, 14);
 TS('5.等级=极限', levelOf(rd.E,L).name, '极限');
-var __d5dev=normDev((((timeOfDay(rd.anchor)+rd.E)%24)+24)%24, timeOfDay(D(2026,8,6,14,0)));
-if(Math.abs(__d5dev)>12){ __fails++; WScript.Echo('FAIL 5.弧线界 |dev|>12 got='+__d5dev); } else { WScript.Echo('PASS  5.弧线界 |dev|<=12（E>24 弧线仍最多半圈）'); }
+
+// 6.「极限却绿」回归：校准点后睡5h+4h未归零，再醒23h → E=24 极限，清醒超=8h（红），不再是慢/绿
+var d6=[
+  {s:D(2026,8,6,2,30),e:D(2026,8,6,10,30)},
+  {s:D(2026,8,7,2,30),e:D(2026,8,7,7,30)},
+  {s:D(2026,8,7,10,30),e:D(2026,8,7,14,30)}
+];
+var r6=computeEAt(d6, D(2026,8,8,13,30));
+T('6.E=24(极限)', r6.E, 24);
+T('6.清醒超=8(红而非绿)', r6.E-16, 8);
 
 TS('L15.9=正常', levelOf(15.9,L).name, '正常');
 TS('L16=疲劳', levelOf(16,L).name, '疲劳');
