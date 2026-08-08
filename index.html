@@ -305,7 +305,7 @@
       <div class="ref" style="bottom:66.666%"></div>
     </div>
     <div class="barAxis" id="barAxis"></div>
-    <div class="note">每根柱=一次醒来（同一天睡多次就有多根），柱顶=那次醒来时的等效清醒 E(h)，与柱高对应；柱下日期，同日多次标②③④。越低恢复越好。紫色虚线=16h（正常清醒日上限）。最近N次（N在设置里可改）。</div>
+    <div class="note">每根柱=一次醒来（同一天睡多次就有多根），柱顶=那次醒来时的等效清醒 E(h)，与柱高对应；柱下日期，同日多次标②③④。越低恢复越好。紫色虚线=16h（正常清醒日：柱高于它=清醒超量，低于=还有余量）。最近N次（N在设置里可改）。</div>
   </div>
   <div class="card">
     <h3 style="margin:2px 0 8px;">单次睡眠时长</h3>
@@ -608,7 +608,6 @@ function timeOfDay(ts){ var d=new Date(ts); return d.getHours()+d.getMinutes()/6
 function fmtHour(h){ h=((h%24)+24)%24; var mm=Math.round((h%1)*60); var hh=Math.floor(h); if(mm===60){mm=0;hh=(hh+1)%24;} return pad2(hh)+':'+pad2(mm); }
 function parseH(str){ var p=String(str).split(':'); return (+p[0])+(+p[1]||0)/60; }
 function fmtDur(h){ if(h==null||isNaN(h))return '—'; var m=Math.round(h*60); if(m<=0)return '0'; if(m<60)return m+'分钟'; var H=Math.floor(m/60), M=m%60; return H+'h'+(M?' '+M+'m':''); }
-function normDev(felt, actual){ var d=(((felt-actual)%24)+24)%24; if(d>12)d-=24; return d; }
 function levelOf(E,L){ if(E>=L.r)return{name:'极限',color:'#d94a52'}; if(E>=L.o)return{name:'很累',color:'#e0813a'}; if(E>=L.y)return{name:'疲劳',color:'#e0a83c'}; return{name:'正常',color:'#34b67a'}; }
 // 合并重叠睡眠块（按开始时间排序）
 function mergeBlocks(blocks){
