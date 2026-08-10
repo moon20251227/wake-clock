@@ -130,6 +130,16 @@ try {
   var sa = getSettings(); sa.liveAnchorH = 6; saveSettings(sa);
   if (getSettings().liveAnchorH !== 6) { __fails++; WScript.Echo('FAIL liveAnchorH save/load'); }
   sa.liveAnchorH = 5; saveSettings(sa);
+  // 分享报告：弹层开合、文本内容齐全、md 下载与图片生成不抛错
+  openShare();
+  if ($('shareSheet').classList.contains('hidden')) { __fails++; WScript.Echo('FAIL share sheet not open'); }
+  closeShare();
+  if (!$('shareSheet').classList.contains('hidden')) { __fails++; WScript.Echo('FAIL share sheet not closed'); }
+  var rep = buildReport(Date.now());
+  if (rep.indexOf('## 当前状态') < 0 || rep.indexOf('## 睡眠记录') < 0 || rep.indexOf('## 趋势') < 0 || rep.indexOf('## 设置与计算逻辑') < 0) { __fails++; WScript.Echo('FAIL buildReport sections'); }
+  if (rep.indexOf('算法：') < 0 || rep.indexOf('重锚阈值') < 0 || rep.indexOf('等级阈值') < 0) { __fails++; WScript.Echo('FAIL buildReport logic lines'); }
+  downloadMd();
+  shareImages();
 
   // file:// 打开场景：init 不得抛错（原生时间选择器失效另由引导横幅提示）
   location.protocol = 'file:';

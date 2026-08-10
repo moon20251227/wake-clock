@@ -18,7 +18,7 @@ if (!Array.prototype.forEach) Array.prototype.forEach = function (f) { for (var 
 if (!Date.now) Date.now = function () { return new Date().getTime(); };
 
 function makeEl(tag) {
-  return {
+  var o = {
     tagName: tag, attributes: {}, style: {},
     classList: {
       _s: {}, add: function (c) { this._s[c] = 1; }, remove: function (c) { delete this._s[c]; },
@@ -28,9 +28,27 @@ function makeEl(tag) {
     textContent: '', innerHTML: '', value: '', title: '', parentNode: null,
     setAttribute: function (k, v) { this.attributes[k] = v; }, getAttribute: function (k) { return this.attributes[k]; },
     appendChild: function (c) { c.parentNode = this; }, insertBefore: function (c, ref) { c.parentNode = this; }, removeChild: function (c) { },
-    addEventListener: function () { }, focus: function () { }, files: null, checked: false
+    addEventListener: function () { }, focus: function () { }, files: null, checked: false, click: function () { }
+  };
+  if (tag === 'canvas') {
+    o.width = 0; o.height = 0;
+    o.getContext = function () { return makeNoopCtx(); };
+    o.toBlob = function (cb) { cb(null); };
+    o.toDataURL = function () { return 'data:image/png;base64,stub'; };
+  }
+  return o;
+}
+function makeNoopCtx() {
+  return {
+    scale: function () {}, clearRect: function () {}, beginPath: function () {}, moveTo: function () {},
+    lineTo: function () {}, arc: function () {}, closePath: function () {}, fill: function () {},
+    stroke: function () {}, save: function () {}, restore: function () {}, translate: function () {},
+    rotate: function () {}, fillRect: function () {}, fillText: function () {}, strokeText: function () {},
+    setLineDash: function () {}, measureText: function (s) { return { width: String(s).length * 12 }; }
   };
 }
+var URL = { createObjectURL: function () { return 'blob:stub'; }, revokeObjectURL: function () { } };
+var Blob = function (parts, opts) { this.parts = parts || []; this.type = (opts && opts.type) || ''; };
 var __reg = {};
 var document = {
   // 与真浏览器一致：'#id' 带井号会查不到（getElementById 只接受裸 id），抓到 $('#x') 这类误用

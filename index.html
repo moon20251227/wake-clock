@@ -295,6 +295,17 @@
   </div>
 </div>
 
+<div id="shareSheet" class="dtsheet hidden">
+  <div class="dtsheet-card">
+    <h3>📤 分享睡眠报告</h3>
+    <div class="note" style="margin:0 0 12px;text-align:center;">文本给 AI 看最准确、可复制或存成 .md 文件；图片是大字卡片，一键生成 4 张可多选一起发。每次任选。</div>
+    <button type="button" class="btn" style="width:100%;margin-bottom:8px;" onclick="copyReport()">复制文本报告</button>
+    <button type="button" class="btn" style="width:100%;margin-bottom:8px;" onclick="downloadMd()">下载 Markdown 文件（.md）</button>
+    <button type="button" class="btn" style="width:100%;margin-bottom:8px;" onclick="shareImages()">生成图片卡片（4 张）</button>
+    <button type="button" class="btn ghost" style="width:100%;" onclick="closeShare()">关闭</button>
+  </div>
+</div>
+
 <section id="tab-trends" class="tab hidden">
   <div class="card">
     <h3 style="margin:2px 0 8px;">睡眠节律图</h3>
@@ -372,6 +383,7 @@
     <small class="set-hint">等级分布 / 等效柱状图 / 走势图共用。14≈两周样本：次数太多会稀释近期趋势，太少会抖。</small>
     <h3 style="margin-top:14px;">数据</h3>
     <button class="btn" onclick="exportData()">导出备份（JSON）</button>
+    <button class="btn" onclick="openShare()">📤 分享睡眠报告（文本 / 图片）</button>
     <label>导入备份
       <input type="file" accept=".json,application/json" onchange="importData(this)">
     </label>
@@ -1358,6 +1370,300 @@ function clearData(){
   if(!confirm('确定清空全部记录和设置？此操作不可恢复。'))return;
   localStorage.removeItem(KEY_RECORDS); localStorage.removeItem(KEY_SETTINGS); localStorage.removeItem(KEY_PENDING);
   refreshAll();
+}
+
+// ================= 分享睡眠报告 =================
+// 趋势统计：取最近 statN 次"醒来"，算平均时长 / 每次醒来等效清醒 / 等级分布
+function reportStats(recs, blocks, now){
+  var s=getSettings(), statN=s.statN||14;
+  var wakes=[], i, k, j, rlen=0;
+  for(i=0;i<recs.length;i++){ var w=toMs(recs[i].wakeEnd); if(w<=now) wakes.push(w); }
+  wakes.sort(function(a,b){ return a-b; });
+  var last=wakes.slice(Math.max(0,wakes.length-statN));
+  var dist={正常:0,疲劳:0,很累:0,极限:0}, sumE=0, sumLen=0, ideal=s.idealSleepH||7, anchorH=s.liveAnchorH||5;
+  for(k=0;k<last.length;k++){
+    var w2=last[k], E=computeEAtLive(blocks,w2,ideal,anchorH).E;
+    var lv=levelOf(E,s.levels);
+    dist[lv.name]=(dist[lv.name]||0)+1;
+    sumE+=E;
+    rlen=0;
+    for(j=0;j<recs.length;j++){ if(toMs(recs[j].wakeEnd)===w2) rlen=(toMs(recs[j].wakeEnd)-toMs(recs[j].sleepStart))/3600000; }
+    sumLen+=rlen;
+  }
+  var n=last.length;
+  return{n:n,avgE:n?sumE/n:0,avgLen:n?sumLen/n:0,dist:dist};
+}
+function reportData(now){
+  now=now||Date.now();
+  var s=getSettings(), recs=loadRecords(), st=stateAt(now);
+  var sorted=recs.slice().sort(function(a,b){ return a.sleepStart<b.sleepStart?-1:1; });
+  var blocks=[],i;
+  for(i=0;i<sorted.length;i++)blocks.push({s:toMs(sorted[i].sleepStart),e:toMs(sorted[i].wakeEnd)});
+  blocks=mergeBlocks(blocks);
+  var stats=reportStats(sorted,blocks,now);
+  var first=sorted.length?sorted[0].sleepStart:null, last=sorted.length?sorted[sorted.length-1].sleepStart:null;
+  var range=first&&last?(first.slice(5,7)+'/'+first.slice(8,10)+' – '+last.slice(5,7)+'/'+last.slice(8,10)):'暂无记录';
+  return{s:s,st:st,recs:sorted,blocks:blocks,stats:stats,adv:generateAdvice(st),range:range};
+}
+function buildReport(now){
+  now=now||Date.now();
+  var d=reportData(now), s=d.s, st=d.st, L=[];
+  function push(x){ L.push(x); }
+  push('醒刻睡眠报告 · '+d.range);
+  push('生成于 '+new Date(now).getFullYear()+'-'+pad2(new Date(now).getMonth()+1)+'-'+pad2(new Date(now).getDate())+' '+fmtHour(st.actual));
+  push('');
+  if(!d.recs.length){ push('还没有睡眠记录。睡前点「睡下了」，醒来点「醒来了」。'); return L.join('\n'); }
+  var total=0,i; for(i=0;i<d.recs.length;i++) total+=(toMs(d.recs[i].wakeEnd)-toMs(d.recs[i].sleepStart))/3600000;
+  var lv=levelOf(st.E,s.levels);
+  push('**一句话**：'+d.recs.length+' 段睡眠，平均每段 '+fmtDur(total/d.recs.length)+'；当前等效清醒 '+st.E.toFixed(1)+'h（'+lv.name+'）'+(st.debt!=null&&st.debt>=0.5?('，累计清醒负债 '+st.debt.toFixed(1)+'h'):'')+'。');
+  push('');
+  push('## 当前状态（'+fmtHour(st.actual)+'）');
+  push('- 等效清醒：'+st.E.toFixed(1)+'h（等级 '+lv.name+'，阈值 '+s.levels.y+'/'+s.levels.o+'/'+s.levels.r+'）');
+  if(st.debt!=null&&st.debt>=0.5) push('- 累计清醒负债：'+st.debt.toFixed(1)+'h（≈再睡 '+(st.debt/2).toFixed(1)+'h 还清）');
+  if(st.felt!=null){ var dd=st.felt-st.actual; if(dd>12)dd-=24; if(dd<-12)dd+=24; push('- 体感时刻：'+fmtHour(st.felt)+'（比实际'+(dd>=0?'快':'慢')+' '+Math.abs(dd).toFixed(1)+'h）'); }
+  if(st.awakeH!=null) push('- 距上次醒来：'+fmtDur(st.awakeH));
+  push('- 最近24h睡眠：'+fmtDur(st.sleep24));
+  if(st.sleeping) push('- 当前：正在睡');
+  if(d.adv&&d.adv.body) push('- 建议：'+d.adv.body.replace(/\n/g,'；'));
+  push('');
+  push('## 睡眠记录（'+d.recs.length+' 段，倒序）');
+  push('| 日期 | 入睡 | 醒来 | 时长 |');
+  push('|---|---|---|---|');
+  for(i=d.recs.length-1;i>=0;i--){
+    var r=d.recs[i], dur=(toMs(r.wakeEnd)-toMs(r.sleepStart))/3600000;
+    push('| '+r.sleepStart.slice(5,10).replace('-','/')+' | '+r.sleepStart.slice(11,16)+' | '+r.wakeEnd.slice(11,16)+' | '+dur.toFixed(1)+'h |');
+  }
+  push('');
+  push('## 趋势（最近 '+d.stats.n+' 次醒来）');
+  if(d.stats.n>0){
+    push('- 平均单次睡眠时长：'+fmtDur(d.stats.avgLen));
+    push('- 每次醒来等效清醒平均：'+d.stats.avgE.toFixed(1)+'h');
+    push('- 等级分布：正常 '+(d.stats.dist['正常']||0)+' · 疲劳 '+(d.stats.dist['疲劳']||0)+' · 很累 '+(d.stats.dist['很累']||0)+' · 极限 '+(d.stats.dist['极限']||0));
+  }
+  push('- 最近24h睡眠：'+fmtDur(st.sleep24));
+  push('');
+  push('## 设置与计算逻辑');
+  push('- 目标作息：'+s.targetBed+' 睡 / '+s.targetWake+' 起；理想睡眠 '+s.idealSleepH+'h');
+  push('- 等级阈值（等效清醒小时数）：疲劳 ≥'+s.levels.y+' · 很累 ≥'+s.levels.o+' · 极限 ≥'+s.levels.r);
+  push('- 重锚阈值：睡满 '+s.liveAnchorH+'h 的一觉，醒来重新锚定');
+  push('- 统计口径：趋势取最近 '+(s.statN||14)+' 次醒来');
+  push('- 算法：醒着等效清醒 +1h/时、睡着 −2h/时（下限0）；清醒超量=等效清醒−16h；体感时刻=(最近休息好时刻+等效清醒)按24h循环');
+  return L.join('\n');
+}
+function openShare(){ $('shareSheet').classList.remove('hidden'); }
+function closeShare(){ $('shareSheet').classList.add('hidden'); }
+function copyReport(){
+  var t=buildReport();
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(function(){},function(){ fallbackCopy(t); });
+  } else { fallbackCopy(t); }
+  closeShare();
+}
+function fallbackCopy(t){
+  try{
+    var ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select();
+    if(document.execCommand)document.execCommand('copy');
+    document.body.removeChild(ta);
+  }catch(e){}
+}
+function downloadMd(){
+  closeShare();
+  try{
+    var t=buildReport();
+    var blob=new Blob([t],{type:'text/markdown;charset=utf-8'});
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download='醒刻报告-'+new Date().getFullYear()+'-'+pad2(new Date().getMonth()+1)+'-'+pad2(new Date().getDate())+'.md';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try{ URL.revokeObjectURL(a.href); }catch(e){} },2000);
+    document.body.removeChild(a);
+  }catch(e){}
+}
+function canvasToBlob(cv,cb){
+  try{
+    if(cv.toBlob){ cv.toBlob(function(b){ cb(b); },'image/png'); }
+    else if(cv.toDataURL){
+      var u=cv.toDataURL('image/png'), bin=atob(u.split(',')[1]), bytes=new Uint8Array(bin.length), i;
+      for(i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+      cb(new Blob([bytes],{type:'image/png'}));
+    } else cb(null);
+  }catch(e){ cb(null); }
+}
+function shareImages(){
+  closeShare();
+  try{
+    var cards=buildCards(), files=[], pending=cards.length, i;
+    function tryShare(){
+      if(pending>0)return;
+      if(navigator.share&&navigator.canShare&&navigator.canShare({files:files})&&files.length){
+        navigator.share({files:files,title:'醒刻睡眠报告',text:'醒刻 · 睡眠快照'});
+      } else {
+        for(var k=0;k<files.length;k++){
+          var a=document.createElement('a'); a.href=URL.createObjectURL(files[k]); a.download=files[k].name;
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
+      }
+    }
+    for(i=0;i<cards.length;i++){
+      (function(idx){
+        canvasToBlob(cards[idx].cv,function(b){
+          if(b)files.push(new File([b],cards[idx].name,{type:'image/png'}));
+          pending--;
+          tryShare();
+        });
+      })(i);
+    }
+    if(cards.length===0)tryShare();
+  }catch(e){ try{ alert('图片生成失败：'+(e.message||e)); }catch(e2){} }
+}
+function makeCard(w,h){
+  var cv=document.createElement('canvas'); cv.width=w*2; cv.height=h*2;
+  var ctx=cv.getContext('2d'); if(!ctx)return null;
+  ctx.scale(2,2);
+  return{cv:cv,ctx:ctx,w:w,h:h};
+}
+function wrapLines(ctx,text,maxW){
+  var lines=[],cur='',i,c;
+  for(i=0;i<text.length;i++){ c=text.charAt(i); if(ctx.measureText(cur+c).width>maxW&&cur){ lines.push(cur); cur=c; } else cur+=c; }
+  if(cur)lines.push(cur);
+  return lines;
+}
+function ptC(cx,cy,t,r){ var a=(t/24)*Math.PI*2; return{x:cx+r*Math.sin(a),y:cy-r*Math.cos(a)}; }
+function angleFor(t){ return (t/24)*Math.PI*2-Math.PI/2; }
+function buildCards(){
+  var d=reportData(), s=d.s, st=d.st, cards=[];
+  var col=s.colors||DEFAULT_SETTINGS.colors;
+  var bg=col.card||'#fbf6e8', lineC=col.line||'#c6d5ba', butter=col.butter||'#f1d996';
+  var txt='#2a2a32', mut='#6a6b62', red='#d94a52', green='#2f9e63';
+  var handCol=HAND_COLORS[s.handColor]||'#7a6ce0';
+  var cx=380, cy=330, R=150, i, h, y;
+  // ---- 卡1 主屏快照 ----
+  var c1=makeCard(760,860);
+  if(c1){
+    var g=c1.ctx;
+    g.fillStyle=bg; g.fillRect(0,0,c1.w,c1.h);
+    g.fillStyle=butter; g.fillRect(0,0,760,86);
+    g.fillStyle=txt; g.font='bold 34px sans-serif'; g.textAlign='left'; g.fillText('醒刻 · 睡眠快照',32,38);
+    g.font='22px sans-serif'; g.fillStyle=mut; g.fillText(d.range,32,66);
+    // 表盘
+    g.lineWidth=3; g.strokeStyle=lineC; g.beginPath(); g.arc(cx,cy,R,0,Math.PI*2); g.stroke();
+    for(h=0;h<24;h++){
+      var rr=(h%3===0)?R-14:R-6, p1=ptC(cx,cy,h,R), p2=ptC(cx,cy,h,rr);
+      g.strokeStyle=(h%3===0)?mut:lineC; g.lineWidth=(h%3===0)?3:1.5;
+      g.beginPath(); g.moveTo(p1.x,p1.y); g.lineTo(p2.x,p2.y); g.stroke();
+    }
+    // 清醒超量弧：超=顺时针红、少=逆时针绿，从实际时刻扫起
+    if(st.dev!=null){
+      var dir=st.dev>=0?1:-1, arcH=Math.min(Math.abs(st.dev),24), a1=angleFor(st.actual), a2=angleFor(st.actual+dir*arcH);
+      g.strokeStyle=st.dev>=0?red:green; g.lineWidth=14; g.lineCap='round';
+      g.beginPath(); g.arc(cx,cy,R-4,a1,a2,st.dev<0); g.stroke();
+      g.lineCap='butt';
+    }
+    // 指针：体感（手色长针）+ 实际（深灰短针）
+    var pf=ptC(cx,cy,(st.felt!=null)?st.felt:st.actual,R*0.95), pa=ptC(cx,cy,st.actual,R*0.6);
+    g.strokeStyle=handCol; g.lineWidth=6; g.beginPath(); g.moveTo(cx,cy); g.lineTo(pf.x,pf.y); g.stroke();
+    g.strokeStyle='#3a3a44'; g.lineWidth=4; g.beginPath(); g.moveTo(cx,cy); g.lineTo(pa.x,pa.y); g.stroke();
+    g.fillStyle=txt; g.beginPath(); g.arc(cx,cy,8,0,Math.PI*2); g.fill();
+    // 下方数据
+    y=cy+R+46;
+    g.textAlign='left';
+    g.fillStyle=txt; g.font='bold 56px sans-serif'; g.fillText(st.E.toFixed(1)+'h',32,y);
+    g.fillStyle=levelOf(st.E,s.levels).color; g.font='bold 30px sans-serif';
+    g.fillText('· '+levelOf(st.E,s.levels).name, 32+g.measureText(st.E.toFixed(1)+'h').width+12, y);
+    g.font='24px sans-serif'; g.fillStyle=mut; y+=40;
+    if(st.felt!=null){ g.fillText('体感 '+fmtHour(st.felt)+'（实际 '+fmtHour(st.actual)+'）',32,y); y+=34; }
+    if(st.debt!=null&&st.debt>=0.5){ g.fillText('累计清醒负债 '+st.debt.toFixed(1)+'h（≈再睡 '+(st.debt/2).toFixed(1)+'h 还清）',32,y); y+=34; }
+    g.fillText('最近24h睡眠 '+fmtDur(st.sleep24),32,y); y+=34;
+    if(d.adv&&d.adv.body){
+      var lines=wrapLines(g,d.adv.body.replace(/\n/g,'；'),700);
+      g.font='22px sans-serif'; g.fillStyle=txt;
+      for(i=0;i<lines.length&&i<4;i++){ g.fillText(lines[i],32,y); y+=30; }
+    }
+    cards.push({cv:c1.cv,name:'醒刻-1主屏.png'});
+  }
+  // ---- 卡2 记录 ----
+  var rows=d.recs.slice().reverse(), cap=Math.min(rows.length,20);
+  var c2=makeCard(760,150+cap*46+30);
+  if(c2){
+    var g2=c2.ctx;
+    g2.fillStyle=bg; g2.fillRect(0,0,760,c2.h);
+    g2.fillStyle=butter; g2.fillRect(0,0,760,86);
+    g2.fillStyle=txt; g2.font='bold 32px sans-serif'; g2.fillText('睡眠记录',32,40);
+    g2.font='20px sans-serif'; g2.fillStyle=mut; g2.fillText('共 '+rows.length+' 段 · 最新在上'+(rows.length>cap?'（显示最近'+cap+'段）':''),32,66);
+    var cols=[{x:36,a:'left',t:'日期'},{x:250,a:'left',t:'入睡'},{x:390,a:'left',t:'醒来'},{x:700,a:'right',t:'时长'}];
+    var i2, y2=126;
+    g2.font='bold 22px sans-serif'; g2.fillStyle=mut;
+    for(i2=0;i2<cols.length;i2++){ g2.textAlign=cols[i2].a; g2.fillText(cols[i2].t,cols[i2].x,y2); }
+    y2+=16;
+    g2.strokeStyle=lineC; g2.lineWidth=2; g2.beginPath(); g2.moveTo(30,y2); g2.lineTo(730,y2); g2.stroke();
+    g2.font='22px sans-serif';
+    for(i2=0;i2<cap;i2++){
+      var r2=rows[i2], dur=(toMs(r2.wakeEnd)-toMs(r2.sleepStart))/3600000;
+      y2+=46;
+      g2.fillStyle=txt; g2.textAlign='left';
+      g2.fillText(r2.sleepStart.slice(5,10).replace('-','/'),36,y2);
+      g2.fillText(r2.sleepStart.slice(11,16),250,y2);
+      g2.fillText(r2.wakeEnd.slice(11,16),390,y2);
+      g2.textAlign='right'; g2.fillStyle=(dur>=s.idealSleepH)?green:txt; g2.fillText(dur.toFixed(1)+'h',700,y2);
+    }
+    cards.push({cv:c2.cv,name:'醒刻-2记录.png'});
+  }
+  // ---- 卡3 趋势 ----
+  var st2=d.stats;
+  var c3=makeCard(760,560);
+  if(c3){
+    var g3=c3.ctx;
+    g3.fillStyle=bg; g3.fillRect(0,0,760,560);
+    g3.fillStyle=butter; g3.fillRect(0,0,760,86);
+    g3.fillStyle=txt; g3.font='bold 32px sans-serif'; g3.fillText('睡眠趋势',32,40);
+    g3.font='20px sans-serif'; g3.fillStyle=mut; g3.fillText('最近 '+st2.n+' 次醒来',32,66);
+    var y3=140;
+    g3.font='24px sans-serif'; g3.textAlign='left';
+    g3.fillStyle=mut; g3.fillText('平均单次睡眠时长',36,y3); g3.fillStyle=txt; g3.fillText(fmtDur(st2.avgLen),300,y3); y3+=40;
+    g3.fillStyle=mut; g3.fillText('每次醒来等效清醒平均',36,y3); g3.fillStyle=txt; g3.fillText(st2.avgE.toFixed(1)+'h',300,y3); y3+=40;
+    g3.fillStyle=mut; g3.fillText('最近24h睡眠',36,y3); g3.fillStyle=txt; g3.fillText(fmtDur(st.sleep24),300,y3); y3+=56;
+    var total=st2.n||1, lvDefs=[{name:'正常',color:'#34b67a'},{name:'疲劳',color:'#e0a83c'},{name:'很累',color:'#e0813a'},{name:'极限',color:'#d94a52'}];
+    g3.fillStyle=mut; g3.font='22px sans-serif'; g3.fillText('等级分布',36,y3); y3+=20;
+    var x=36, k;
+    for(k=0;k<lvDefs.length;k++){
+      var cnt=st2.dist[lvDefs[k].name]||0, w=cnt/total*688;
+      g3.fillStyle=lvDefs[k].color; g3.fillRect(x,y3,w,34);
+      if(w>40){ g3.fillStyle='#fff'; g3.font='bold 22px sans-serif'; g3.textAlign='center'; g3.fillText(String(cnt),x+w/2,y3+24); }
+      x+=w;
+    }
+    g3.fillStyle='#3a3a44'; g3.font='20px sans-serif'; g3.textAlign='left';
+    g3.fillText('正常',36,y3+58); g3.fillText('疲劳',170,y3+58); g3.fillText('很累',310,y3+58); g3.fillText('极限',450,y3+58);
+    cards.push({cv:c3.cv,name:'醒刻-3趋势.png'});
+  }
+  // ---- 卡4 规则 ----
+  var c4=makeCard(760,720);
+  if(c4){
+    var g4=c4.ctx;
+    g4.fillStyle=bg; g4.fillRect(0,0,760,720);
+    g4.fillStyle=butter; g4.fillRect(0,0,760,86);
+    g4.fillStyle=txt; g4.font='bold 32px sans-serif'; g4.fillText('设置与计算规则',32,40);
+    g4.font='20px sans-serif'; g4.fillStyle=mut; g4.fillText('给 AI 或他人理解这份报告的口径',32,66);
+    var lines4=[
+      '目标作息：'+s.targetBed+' 睡 / '+s.targetWake+' 起',
+      '理想睡眠：'+s.idealSleepH+'h',
+      '等级阈值（等效清醒小时数）：疲劳≥'+s.levels.y+' · 很累≥'+s.levels.o+' · 极限≥'+s.levels.r,
+      '重锚阈值：睡满 '+s.liveAnchorH+'h 的觉，醒来重新锚定',
+      '统计口径：趋势取最近 '+(s.statN||14)+' 次醒来',
+      '',
+      '算法：',
+      '· 醒着等效清醒 +1h/时；睡着 −2h/时（下限 0）',
+      '· 清醒超量 = 等效清醒 − 16h（正常清醒日基准）',
+      '· 体感时刻 = 最近一次休息好时刻 + 等效清醒，按 24h 循环',
+      '· 累计清醒负债 = 按旧算法累积的欠账，睡够会自动还清'
+    ];
+    var y4=150, i4;
+    for(i4=0;i4<lines4.length;i4++){
+      if(lines4[i4]===''){ y4+=16; continue; }
+      if(lines4[i4]==='算法：'){ g4.font='bold 28px sans-serif'; } else { g4.font='26px sans-serif'; }
+      g4.fillStyle=txt; g4.fillText(lines4[i4],36,y4); y4+=44;
+    }
+    cards.push({cv:c4.cv,name:'醒刻-4规则.png'});
+  }
+  return cards;
 }
 
 // ================= 导航 =================
