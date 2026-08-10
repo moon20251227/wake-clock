@@ -116,6 +116,15 @@ try {
   var st = stateAt(Date.now());
   if (!(st.E >= 0)) { __fails++; WScript.Echo('FAIL stateAt E=' + st.E); }
   if (st.felt == null) { __fails++; WScript.Echo('FAIL felt null'); }
+  // 主屏债务副读 + 刚醒不劝睡（合成 justWoke 状态直接测建议）
+  if (typeof st.debt !== 'number' || st.debt < 0) { __fails++; WScript.Echo('FAIL stateAt.debt'); }
+  renderMain();
+  if ($('debtLine').textContent.indexOf('累计清醒负债') < 0) { __fails++; WScript.Echo('FAIL debtLine missing got=' + $('debtLine').textContent); }
+  var stJ = { E: 30, dev: 14, felt: 23, actual: 23, awakeH: 0.5, sleeping: false, records: [], sleep24: 6, pending: null, anchor: null };
+  var advJ = generateAdvice(stJ);
+  if (advJ.body.indexOf('该睡了') >= 0 || advJ.body.indexOf('现在就去睡') >= 0) { __fails++; WScript.Echo('FAIL just-woke advice pushes sleep got=' + advJ.body); }
+  var advN = generateAdvice({ E: 22, dev: 6, felt: 23, actual: 23, awakeH: 8, sleeping: false, records: [], sleep24: 6, pending: null, anchor: null });
+  if (advN.body.indexOf('已到极限') < 0) { __fails++; WScript.Echo('FAIL awake-8h E=22 should say limit got=' + advN.body); }
 
   // file:// 打开场景：init 不得抛错（原生时间选择器失效另由引导横幅提示）
   location.protocol = 'file:';

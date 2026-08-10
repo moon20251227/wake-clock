@@ -42,6 +42,7 @@
   .reads div{display:flex;flex-direction:column;align-items:center;gap:1px;font-size:11px;color:var(--mut);}
   .reads b{font-size:20px;font-weight:700;color:var(--txt);font-variant-numeric:tabular-nums;line-height:1.15;}
   .chips{display:flex;flex-wrap:nowrap;gap:6px;justify-content:center;margin:0 10px 4px;}
+  .debtline{margin:0 12px 6px;font-size:12px;color:var(--mut);text-align:center;}
   .chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 10px;font-size:13px;color:var(--mut);
     display:inline-flex;align-items:center;justify-content:center;text-align:center;gap:4px;min-height:32px;white-space:nowrap;min-width:0;}
   .chip b{color:var(--txt);}
@@ -207,6 +208,7 @@
       <div class="chip" id="levelChip">—</div>
       <div class="chip">最近24h睡 <b id="sleep24Val">—</b></div>
     </div>
+    <div class="debtline hidden" id="debtLine"></div>
     <div class="targets">
       <div class="tcard">目标就寝 <b id="tBed">—</b></div>
       <div class="tcard">目标起床 <b id="tWake">—</b></div>
@@ -648,6 +650,31 @@ function computeEAt(sortedBlocks,t){
   if(cur<t){ E=E+(t-cur)/3600000; }
   return{E:E,anchor:anchor};
 }
+var LIVE_ANCHOR_H=5; // 睡够这一小时数的一觉，醒来就重新锚定（把这次醒来当新起点）
+// 活体等效清醒：睡够 ≥LIVE_ANCHOR_H 的觉醒来 → E=「还欠多少」(理想睡眠−实睡,≥0)、校准点=这次醒来；
+// 短 nap（不足阈值）仍按累计递减（E−2/h，跌到 0 才更新校准点）。
+// 让主屏/趋势的等级、体感、清醒超量反映「距上次真正休息好过了多久」，不被长期累计负债焊死在极限。
+function computeEAtLive(sortedBlocks,t,ideal){
+  if(!sortedBlocks.length)return{E:0,anchor:null};
+  var E=0,anchor=null,cur=sortedBlocks[0].s,i,iv,dt;
+  for(i=0;i<sortedBlocks.length;i++){
+    iv=sortedBlocks[i];
+    if(cur<iv.s){
+      dt=Math.min(iv.s,t)-cur;
+      if(dt>0){ E=E+dt/3600000; cur=iv.s; }
+    }
+    if(cur<iv.e&&cur<t){
+      dt=Math.min(iv.e,t)-cur;
+      E=E-2*(dt/3600000);
+      var len=(iv.e-iv.s)/3600000;
+      if(iv.e<=t&&len>=LIVE_ANCHOR_H){ E=Math.max(0,ideal-len); anchor=iv.e; }
+      else if(E<=0){ anchor=iv.e; E=0; }
+      cur=Math.min(iv.e,t);
+    }
+  }
+  if(cur<t){ E=E+(t-cur)/3600000; }
+  return{E:E,anchor:anchor};
+}
 // 最近24h内"完整结束"的睡眠块时长之和（不截断任何一块）
 function rollingSleep24(blocks,now){
   var since=now-24*3600000,sum=0,i;
@@ -722,12 +749,20 @@ function stateAt(now){
   for(i=0;i<recs.length;i++){ blocks.push({s:toMs(recs[i].sleepStart),e:toMs(recs[i].wakeEnd)}); }
   if(pend&&now>pend.sleepStart){ blocks.push({s:pend.sleepStart,e:now}); sleeping=true; }
   blocks=mergeBlocks(blocks);
-  var r=computeEAt(blocks,now);
+  var ideal=getSettings().idealSleepH||7;
+  var rd=computeEAt(blocks,now);            // 累计清醒负债：只在累计睡回0时归零，长期欠觉会一直涨
+  var rl=computeEAtLive(blocks,now,ideal);  // 活体等效清醒：睡够≥5h重新锚定，反映「距上次真正休息好过了多久」
   var actual=timeOfDay(now), felt=null, dev=null;
-  if(r.anchor!=null){ felt=(((timeOfDay(r.anchor)+r.E)%24)+24)%24; }
-  // 偏移改为「清醒超量」= 等效清醒 E − 正常清醒日(16h)：正值=超(快/红)、负值=少(慢/绿)，不再受 ±12h 限制
-  dev=r.E-16;
-  return{E:r.E,anchor:r.anchor,felt:felt,dev:dev,actual:actual,sleep24:rollingSleep24(blocks,now),sleeping:sleeping,records:recs,pending:pend};
+  if(rl.anchor!=null){ felt=(((timeOfDay(rl.anchor)+rl.E)%24)+24)%24; }
+  // 清醒超量 = 活体等效清醒 − 正常清醒日(16h)：正值=超(快/红)、负值=少(慢/绿)
+  dev=rl.E-16;
+  var awakeH=lastWakeMs(blocks,now);
+  return{E:rl.E,anchor:rl.anchor,debt:rd.E,felt:felt,dev:dev,actual:actual,awakeH:awakeH,sleep24:rollingSleep24(blocks,now),sleeping:sleeping,records:recs,pending:pend};
+}
+function lastWakeMs(blocks,now){
+  var last=null,i;
+  for(i=0;i<blocks.length;i++){ if(blocks[i].e<=now&&(last==null||blocks[i].e>last))last=blocks[i].e; }
+  return last==null?null:(now-last)/3600000;
 }
 function lastWakeH(st){
   var recs=st.records,last=null,i,w;
@@ -740,6 +775,7 @@ function hoursUntilWake(nowH,wakeH){ var d=nowH<wakeH?wakeH-nowH:24-nowH+wakeH; 
 function remToBed(nowH,bed){ var d=bed-nowH; return d<0?d+24:d; }
 function supRule(st,s){
   var bed=parseH(s.targetBed),wake=parseH(s.targetWake),nowH=st.actual,E=st.E;
+  if(st.awakeH!=null&&st.awakeH<2)return '刚醒'+fmtDur(st.awakeH)+'，先清醒；下一觉尽量在 '+s.targetBed+' 前后。';
   if(E>=20)return '极限状态：现在就睡。';
   if(nowH>=bed-1&&nowH<=bed+1&&E>=12)return '到目标就寝时间了，去睡，明早 '+s.targetWake+' 起。';
   var lw=lastWakeH(st);
@@ -750,13 +786,17 @@ function supRule(st,s){
 }
 function generateAdvice(st){
   var s=getSettings(),bed=parseH(s.targetBed),wake=parseH(s.targetWake),nowH=st.actual,E=st.E,lines=[];
+  var justWoke=st.awakeH!=null&&st.awakeH<2;
   if(st.sleeping)return{title:'睡眠中',body:'你正在睡。睡到自然醒或 '+s.targetWake+' 起，E 会继续回落。'};
   if(st.dev!=null){
     var over=st.dev>=0;
-    lines.push('你的有效清醒 '+st.E.toFixed(1)+'h，比正常清醒日(16h) '+(over?'多':'少')+' '+Math.abs(st.dev).toFixed(1)+'h——'+(over?'清醒超量，该睡了。':'休息得不错，保持节奏。')+(st.felt!=null?'（身体觉得现在≈'+fmtHour(st.felt)+'）':''));
+    var tail=justWoke?('刚醒'+fmtDur(st.awakeH)+'，先保持清醒，别立刻又躺回。'):(over?'清醒超量，该睡了。':'休息得不错，保持节奏。');
+    lines.push('你的有效清醒 '+st.E.toFixed(1)+'h，比正常清醒日(16h) '+(over?'多':'少')+' '+Math.abs(st.dev).toFixed(1)+'h——'+tail+(st.felt!=null?'（身体觉得现在≈'+fmtHour(st.felt)+'）':''));
   }
   var dur=hoursUntilWake(nowH,wake);
-  if(E>=20){
+  if(E>=20&&justWoke){
+    lines.push('刚醒不到2h，别马上睡；等效清醒还这么高，说明刚才那觉没补够——今天别再睡长觉，今晚 '+s.targetBed+' 前躺下，明早 '+s.targetWake+' 起。');
+  }else if(E>=20){
     lines.push('已到极限，现在就去睡，别撑到天亮。'+(dur>=4?'闹钟设 '+s.targetWake+'，睡约 '+fmtDur(dur)+'。':'能睡多久睡多久。'));
   }else if(nowH>=21&&dur>=4&&2*dur>=E){
     lines.push('现在去睡，闹钟 '+s.targetWake+'，睡约 '+fmtDur(dur)+'——这次 E 会回 0，表盘校准到 '+s.targetWake+'，一次归位。');
@@ -773,6 +813,7 @@ function generateAdvice(st){
 function askSleepy(){
   var st=stateAt(Date.now()),s=getSettings(),bed=parseH(s.targetBed),nowH=st.actual,E=st.E,msg;
   if(st.sleeping){ msg='你正在睡，睡醒再点这个按钮。'; }
+  else if(st.awakeH!=null&&st.awakeH<2){ msg='刚醒不到2h，先别又躺回去；过会儿真困了再说，尽量撑到 '+s.targetBed+' 前后。'; }
   else if(E>=20){ msg='你不是有点困，是严重欠觉——直接长睡到 '+s.targetWake+'，别只补短觉。'; }
   else if(nowH>=bed){ msg='已经过了目标就寝时间，现在就去睡吧。'; }
   else if(nowH>=bed-3){ msg='快到目标就寝时间，别睡，撑到 '+s.targetBed+' 直接睡。'; }
@@ -783,6 +824,7 @@ function askSleepy(){
 function askReset(){
   var st=stateAt(Date.now()),s=getSettings(),bed=parseH(s.targetBed),wake=parseH(s.targetWake),nowH=st.actual,E=st.E,msg;
   if(st.sleeping){ msg='你正在睡。若想今天调回，闹钟设 '+s.targetWake+' 起，白天别再睡长觉。'; }
+  else if(st.awakeH!=null&&st.awakeH<2){ msg='刚醒不到2h，先清醒；今天别再睡长觉，撑到 '+s.targetBed+' 睡，明早 '+s.targetWake+' 起。'; }
   else if(E>=20){ msg='先睡，明天再调。现在去睡，别撑。'; }
   else{
     var dur=hoursUntilWake(nowH,wake);
@@ -884,6 +926,9 @@ function renderMain(){
   else{ dv.textContent='正好'; dv.style.color=''; }
   $('eVal').textContent=st.E.toFixed(1)+'h';
   $('sleep24Val').textContent=fmtDur(st.sleep24);
+  var dl=$('debtLine');
+  if(st.debt!=null&&st.debt>=0.5){ dl.textContent='累计清醒负债 '+st.debt.toFixed(1)+'h（≈再睡 '+(st.debt/2).toFixed(1)+'h 还清）'; dl.classList.remove('hidden'); }
+  else{ dl.classList.add('hidden'); }
   var lc=$('levelChip'); lc.innerHTML='<b style="color:'+lv.color+'">'+lv.name+'</b>';
   $('tBed').textContent=s.targetBed; $('tWake').textContent=s.targetWake;
   $('sleepingBanner').classList.toggle('hidden',!st.sleeping);
@@ -969,7 +1014,7 @@ function levelAtWake(rec){
   var recs=loadRecords(),blocks=[],i,w=toMs(rec.wakeEnd);
   for(i=0;i<recs.length;i++){ var ww=toMs(recs[i].wakeEnd); if(ww<=w)blocks.push({s:toMs(recs[i].sleepStart),e:ww}); }
   blocks=mergeBlocks(blocks);
-  var r=computeEAt(blocks,w);
+  var r=computeEAtLive(blocks,w,getSettings().idealSleepH||7);
   return levelOf(r.E,getSettings().levels);
 }
 function pushSegments(arr,s,e,color){
@@ -1055,7 +1100,7 @@ function renderWakeBars(recs){
     rec=last[i]; w=toMs(rec.wakeEnd); blocks=[];
     for(j=0;j<byWake.length;j++){ ww=toMs(byWake[j].wakeEnd); if(ww<=w)blocks.push({s:toMs(byWake[j].sleepStart),e:ww}); }
     blocks=mergeBlocks(blocks);
-    r=computeEAt(blocks,w);
+    r=computeEAtLive(blocks,w,getSettings().idealSleepH||7);
     items.push({E:r.E,color:levelOf(r.E,getSettings().levels).color,w:w});
   }
   // 柱高按本次数据最大 E 缩放（保底 24h）：等效清醒无上限，E 超 24 不再顶死
