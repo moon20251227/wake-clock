@@ -1280,23 +1280,26 @@ function parse(v,el){
   if(el==='setStatN')return Math.max(5,Math.min(40,parseInt(v,10)||14));
   return v;
 }
+function buildBackup(){ return{records:loadRecords(),settings:getSettings(),pending:loadPending()}; }
 function exportData(){
-  var data={exportedAt:new Date().toISOString(),records:loadRecords(),settings:getSettings()};
+  var data=buildBackup(); data.exportedAt=new Date().toISOString();
   var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download='醒刻备份-'+new Date().toISOString().slice(0,10)+'.json';
+  a.download='醒刻备份-'+data.exportedAt.slice(0,10)+'.json';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+function applyBackup(d){
+  if(!d)return;
+  if(Object.prototype.toString.call(d.records)==='[object Array]')saveRecords(d.records);
+  if(d.settings)saveSettings(d.settings);
+  if(d.pending)savePending(d.pending); else localStorage.removeItem(KEY_PENDING);
 }
 function importData(input){
   var f=input.files&&input.files[0]; if(!f)return;
   var reader=new FileReader();
   reader.onload=function(){
-    try{
-      var d=JSON.parse(reader.result);
-      if(d&&Object.prototype.toString.call(d.records)==='[object Array]')saveRecords(d.records);
-      if(d&&d.settings)saveSettings(d.settings);
-      refreshAll();
-    }catch(e){ alert('导入失败：文件格式不对'); }
+    try{ applyBackup(JSON.parse(reader.result)); refreshAll(); }
+    catch(e){ alert('导入失败：文件格式不对'); }
     input.value='';
   };
   reader.readAsText(f);

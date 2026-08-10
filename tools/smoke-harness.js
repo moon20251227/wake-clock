@@ -61,6 +61,16 @@ try {
   if (wrapIdx(-2, 24) !== 22) { __fails++; WScript.Echo('FAIL wrapIdx -2'); }
   if (wrapIdx(24, 24) !== 0) { __fails++; WScript.Echo('FAIL wrapIdx 24'); }
   if (wrapIdx(23, 24) !== 23) { __fails++; WScript.Echo('FAIL wrapIdx 23'); }
+  // 备份/恢复：buildBackup 含 records/settings/pending，applyBackup 完整还原（旧文件无 pending 则清，不动 records）
+  savePending({ sleepStart: Date.now() });
+  var bk = buildBackup();
+  if (!bk.pending) { __fails++; WScript.Echo('FAIL backup missing pending'); }
+  if (!bk.settings || bk.settings.targetBed !== '01:00') { __fails++; WScript.Echo('FAIL backup missing settings'); }
+  if (bk.records.length < 1) { __fails++; WScript.Echo('FAIL backup missing records'); }
+  applyBackup(bk);
+  if (!loadPending()) { __fails++; WScript.Echo('FAIL import restores pending'); }
+  applyBackup({ settings: null });
+  if (loadPending()) { __fails++; WScript.Echo('FAIL import clears pending when absent'); }
   // 配色：默认色号写进设置页输入框/色块，applyColors/applyOneColor 在 stub（无 documentElement）下不抛错
   applyColors();
   applyOneColor('bg', '#123456');
