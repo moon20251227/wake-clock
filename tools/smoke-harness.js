@@ -125,6 +125,11 @@ try {
   if (advJ.body.indexOf('该睡了') >= 0 || advJ.body.indexOf('现在就去睡') >= 0) { __fails++; WScript.Echo('FAIL just-woke advice pushes sleep got=' + advJ.body); }
   var advN = generateAdvice({ E: 22, dev: 6, felt: 23, actual: 23, awakeH: 8, sleeping: false, records: [], sleep24: 6, pending: null, anchor: null });
   if (advN.body.indexOf('已到极限') < 0) { __fails++; WScript.Echo('FAIL awake-8h E=22 should say limit got=' + advN.body); }
+  // 重锚阈值设置：默认5回填、可存读、设置页输入框有值
+  if (Number($('setAnchor').value) !== 5) { __fails++; WScript.Echo('FAIL setAnchor fill got=' + $('setAnchor').value); }
+  var sa = getSettings(); sa.liveAnchorH = 6; saveSettings(sa);
+  if (getSettings().liveAnchorH !== 6) { __fails++; WScript.Echo('FAIL liveAnchorH save/load'); }
+  sa.liveAnchorH = 5; saveSettings(sa);
 
   // file:// 打开场景：init 不得抛错（原生时间选择器失效另由引导横幅提示）
   location.protocol = 'file:';

@@ -347,6 +347,8 @@
       <button type="button" class="dtbtn" onclick="pickClockTime('setWake')"><b id="setWakeVal">08:00</b><small>点这里选时间</small></button>
     </label>
     <label>理想睡眠时长（小时） <input type="number" id="setIdeal" min="4" max="12" step="0.5" value="7"></label>
+    <label>睡满几小时算「休息好」 <input type="number" id="setAnchor" min="3" max="8" step="0.5" value="5"></label>
+    <small class="set-hint">睡满这个时长的一觉，醒来就把等效清醒重置为「还欠多少」（重新锚定）；低于它的午睡只算回血。设太高会回到长期欠债焊死极限，设太低小睡也算清账。默认 5。</small>
     <label>体感针颜色
       <select id="setHand">
         <option>紫</option><option>青</option><option>蓝</option><option>白</option><option>玫红</option><option>黑</option>
@@ -650,12 +652,13 @@ function computeEAt(sortedBlocks,t){
   if(cur<t){ E=E+(t-cur)/3600000; }
   return{E:E,anchor:anchor};
 }
-var LIVE_ANCHOR_H=5; // 睡够这一小时数的一觉，醒来就重新锚定（把这次醒来当新起点）
-// 活体等效清醒：睡够 ≥LIVE_ANCHOR_H 的觉醒来 → E=「还欠多少」(理想睡眠−实睡,≥0)、校准点=这次醒来；
+var LIVE_ANCHOR_H=5; // 重锚阈值默认值：一觉睡满这一小时数，醒来重新锚定（设置页「睡满几小时算休息好」可改）
+// 活体等效清醒：睡够 ≥anchorH 的觉醒来 → E=「还欠多少」(理想睡眠−实睡,≥0)、校准点=这次醒来；
 // 短 nap（不足阈值）仍按累计递减（E−2/h，跌到 0 才更新校准点）。
 // 让主屏/趋势的等级、体感、清醒超量反映「距上次真正休息好过了多久」，不被长期累计负债焊死在极限。
-function computeEAtLive(sortedBlocks,t,ideal){
+function computeEAtLive(sortedBlocks,t,ideal,anchorH){
   if(!sortedBlocks.length)return{E:0,anchor:null};
+  if(anchorH===undefined)anchorH=LIVE_ANCHOR_H;
   var E=0,anchor=null,cur=sortedBlocks[0].s,i,iv,dt;
   for(i=0;i<sortedBlocks.length;i++){
     iv=sortedBlocks[i];
@@ -667,7 +670,7 @@ function computeEAtLive(sortedBlocks,t,ideal){
       dt=Math.min(iv.e,t)-cur;
       E=E-2*(dt/3600000);
       var len=(iv.e-iv.s)/3600000;
-      if(iv.e<=t&&len>=LIVE_ANCHOR_H){ E=Math.max(0,ideal-len); anchor=iv.e; }
+      if(iv.e<=t&&len>=anchorH){ E=Math.max(0,ideal-len); anchor=iv.e; }
       else if(E<=0){ anchor=iv.e; E=0; }
       cur=Math.min(iv.e,t);
     }
@@ -685,7 +688,7 @@ function rollingSleep24(blocks,now){
 
 var KEY_RECORDS='wake-clock-records', KEY_SETTINGS='wake-clock-settings', KEY_PENDING='wake-clock-pending';
 var HAND_COLORS={紫:'#7a6ce0',青:'#3aa8c9',蓝:'#5b7fd6',白:'#7a7682',玫红:'#d4639f',黑:'#3a3a44'};
-var DEFAULT_SETTINGS={targetBed:'01:00',targetWake:'08:00',idealSleepH:7,handColor:'紫',levels:{y:16,o:20,r:24},statN:14,
+var DEFAULT_SETTINGS={targetBed:'01:00',targetWake:'08:00',idealSleepH:7,handColor:'紫',levels:{y:16,o:20,r:24},statN:14,liveAnchorH:5,
   colors:{bg:'#d1e4ca',card:'#fbf6e8',line:'#c6d5ba',butter:'#f1d996',pur:'#7a6ce0'}};
 
 function loadRecords(){
@@ -751,7 +754,7 @@ function stateAt(now){
   blocks=mergeBlocks(blocks);
   var ideal=getSettings().idealSleepH||7;
   var rd=computeEAt(blocks,now);            // 累计清醒负债：只在累计睡回0时归零，长期欠觉会一直涨
-  var rl=computeEAtLive(blocks,now,ideal);  // 活体等效清醒：睡够≥5h重新锚定，反映「距上次真正休息好过了多久」
+  var rl=computeEAtLive(blocks,now,ideal,getSettings().liveAnchorH);  // 活体等效清醒：睡够阈值重新锚定，反映「距上次真正休息好过了多久」
   var actual=timeOfDay(now), felt=null, dev=null;
   if(rl.anchor!=null){ felt=(((timeOfDay(rl.anchor)+rl.E)%24)+24)%24; }
   // 清醒超量 = 活体等效清醒 − 正常清醒日(16h)：正值=超(快/红)、负值=少(慢/绿)
@@ -1014,7 +1017,7 @@ function levelAtWake(rec){
   var recs=loadRecords(),blocks=[],i,w=toMs(rec.wakeEnd);
   for(i=0;i<recs.length;i++){ var ww=toMs(recs[i].wakeEnd); if(ww<=w)blocks.push({s:toMs(recs[i].sleepStart),e:ww}); }
   blocks=mergeBlocks(blocks);
-  var r=computeEAtLive(blocks,w,getSettings().idealSleepH||7);
+  var r=computeEAtLive(blocks,w,getSettings().idealSleepH||7,getSettings().liveAnchorH);
   return levelOf(r.E,getSettings().levels);
 }
 function pushSegments(arr,s,e,color){
@@ -1100,7 +1103,7 @@ function renderWakeBars(recs){
     rec=last[i]; w=toMs(rec.wakeEnd); blocks=[];
     for(j=0;j<byWake.length;j++){ ww=toMs(byWake[j].wakeEnd); if(ww<=w)blocks.push({s:toMs(byWake[j].sleepStart),e:ww}); }
     blocks=mergeBlocks(blocks);
-    r=computeEAtLive(blocks,w,getSettings().idealSleepH||7);
+    r=computeEAtLive(blocks,w,getSettings().idealSleepH||7,getSettings().liveAnchorH);
     items.push({E:r.E,color:levelOf(r.E,getSettings().levels).color,w:w});
   }
   // 柱高按本次数据最大 E 缩放（保底 24h）：等效清醒无上限，E 超 24 不再顶死
@@ -1271,6 +1274,7 @@ function fillSettings(){
   $('setIdeal').value=s.idealSleepH; $('setHand').value=s.handColor;
   $('setY').value=s.levels.y; $('setO').value=s.levels.o; $('setR').value=s.levels.r;
   $('setStatN').value=s.statN||14;
+  $('setAnchor').value=s.liveAnchorH||5;
   var cols=s.colors||DEFAULT_SETTINGS.colors, defs=DEFAULT_SETTINGS.colors;
   var keys=[['Bg','bg'],['Card','card'],['Line','line'],['Butter','butter'],['Pur','pur']];
   for(var i=0;i<keys.length;i++){
@@ -1285,7 +1289,7 @@ function resetColors(){
   saveSettings(s); fillSettings(); applyColors();
 }
 function bindSettings(){
-  var inputs=[['setIdeal','idealSleepH'],['setHand','handColor'],['setY','levels.y'],['setO','levels.o'],['setR','levels.r'],['setStatN','statN']];
+  var inputs=[['setIdeal','idealSleepH'],['setHand','handColor'],['setY','levels.y'],['setO','levels.o'],['setR','levels.r'],['setStatN','statN'],['setAnchor','liveAnchorH']];
   for(var i=0;i<inputs.length;i++){
     (function(el,key){
       var node=$(el);
@@ -1323,6 +1327,7 @@ function parse(v,el){
   if(el==='setIdeal')return parseFloat(v)||7;
   if(el==='setY'||el==='setO'||el==='setR')return parseFloat(v)||0;
   if(el==='setStatN')return Math.max(5,Math.min(40,parseInt(v,10)||14));
+  if(el==='setAnchor')return Math.max(3,Math.min(8,parseFloat(v)||5));
   return v;
 }
 function buildBackup(){ return{records:loadRecords(),settings:getSettings(),pending:loadPending()}; }

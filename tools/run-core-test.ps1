@@ -104,6 +104,12 @@ var d8b=[
 var l10=computeEAtLive(d8b, D(2026,8,11,1,0), 7);
 T('8.睡5.0h重锚 E=2(欠2h)', l10.E, 2);
 
+// 9.anchorH 可调：同样的5h觉，阈值调到7就不重锚（累计E=4）；阈值降到4时4h觉也重锚（E=还欠3h）
+var l11=computeEAtLive(d8b, D(2026,8,11,1,0), 7, 7);
+T('9.anchorH=7 时 5h 不重锚 E=4', l11.E, 4);
+var l12=computeEAtLive([{s:D(2026,8,10,0,0),e:D(2026,8,10,4,0)}], D(2026,8,10,4,0), 7, 4);
+T('9.anchorH=4 时 4h 也重锚 E=3', l12.E, 3);
+
 TS('L15.9=正常', levelOf(15.9,L).name, '正常');
 TS('L16=疲劳', levelOf(16,L).name, '疲劳');
 TS('L19.9=疲劳', levelOf(19.9,L).name, '疲劳');
