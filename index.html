@@ -1481,7 +1481,7 @@ function downloadMd(){
 function shareImages(){
   closeShare();
   ensureHtml2canvas(function(ok){
-    if(!ok){ try{ alert('截图引擎加载失败：首次需要联网加载 html2canvas.min.js（之后有缓存）。离线时请改用文本报告。'); }catch(e){} return; }
+    if(!ok){ try{ alert('截图引擎加载失败：请确认 html2canvas.min.js 与页面在同一目录。离线时请改用文本报告。'); }catch(e){} return; }
     captureTabs();
   });
 }
